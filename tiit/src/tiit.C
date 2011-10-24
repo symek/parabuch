@@ -84,13 +84,13 @@ private:
 void me()
 {
 	cout << endl;
-	cout << "\tiinfo  v0.1, skk." << endl << "\tor TIIT: Tiny Image Inspection Tool." << endl << endl;
+	cout << "\ttiit: tiny image inspection tool." << endl << endl;
 }
 
 void usage()
 {
-	me();	
-	cout << "Usage: iinfo [options] picfile.ext" << endl;
+	//me();	
+	cout << "Usage: tiit [options] picfile.ext" << endl;
 	cout << "options:" << endl;
 	cout << "\t -i         check file integrity." << endl;
 	cout << "\t -h         print image sha-1 sum." << endl;
@@ -272,9 +272,9 @@ main(int argc, char *argv[])
 	int  npix                = 0;          
 	
 	/* Switch working plane if requested */ 
-	if (args.found('w')) 
+	if (args.found('p')) 
 	{
-		plane_name = args.argp('w');
+		plane_name = args.argp('p');
 		cout << "Work plane: " << plane_name << endl;
 	}
 
