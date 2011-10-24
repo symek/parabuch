@@ -1,0 +1,23 @@
+TIIT is a tiny tool for image file inspection.
+
+It was inspired by Houdini's and OpenImageIO's  'iinfo' utility. 
+(First one doesn't do much besides printing rasters info, 
+second one crashes being confused by per plane bit depth
+variance in a file.)
+
+tiit does:
+	- check file integrity (if it can be loaded into memory).
+	- prints details about deep rasters, bit depths, channels etc.
+	- prints statistic: min, max, avarage, std-dev, nans, infs etc.
+	- prints hash number generated from one of an image planes.
+	- print meta data.
+tiit could:
+	- fix found nans and infs (box interpolating neighbours).
+	- print wavelet signature for content aware file comparision.
+	- print rank of similarity based on two wavelet signatures.
+	- find missing backets (hard but I believe possible).  
+	- edit meta data in OpenEXR/JPEG files.
+
+
+Currently code is horrible as it was written during one day
+as a proof of concept.
