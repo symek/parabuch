@@ -1,26 +1,3 @@
-/*
- * TIIT - Tiny Image Inspection Tool or...:
- * Yet another 'iinfo' utility. The one coming with Houdini is nice, but doesn't do much.
- * Its file integrity check isn't that useful, as most broken renders are correctly closed files.
- * Mantra and many other renderes saves images bucketes after buckets hardly leaving it opened. 
- * Another life of 'iinfo' exists thanks to Lary Gritz's OpenImageIO. It has a couple of nice additions, 
- * like computing hash from pixels, looking for NaN as Inf pixel values, but:
- *  - it also doesn't deal with renders with missing buckets
- *  - it doesn't handle well Mantra's EXR images. Seems to get confused with mixed bitdepth per raster and/or
- *    compression schema. Mantra's EXRs periodically crash OIIO's iinfo...
- * 
- * So, facing these issues I wrote yet another image inspection tool called (yes, right!): iinfo;
- * Our goals:
- *  - reimplement SESI's and OIIO's 'iinfo' functionality. 
- *  - implement some sort of buckets sensitive debugging procedure.
- *  - implement 'similarity' check (to compare/find equal images saved in different files/formats). 
- *  - optionally repair NaNs and infs.
- *  - make possible to read/(!)write arbitrary tags in OpenEXR/(?)JPEG files.
- *  
- *
- * 16.10.2011, skk.
-*/
-
 // TODO: 
 // 1. hash (touched)
 // 2. NaN, Inf (touched)
@@ -28,6 +5,7 @@
 // 4. Similarity (researching Discrete Wavelet Transform based image comparition).
 // 5. write tags (is it possible with HDK, or wee need openEXR headers?)
 // 6. Integrity check (?)
+// 7. remove openssl dependency.
 
 
 //HDK:
