@@ -1,0 +1,6 @@
+This is a VEX implementation of wavelet noise function according to:
+"Wavelet Noise, Robert L. Cook Tony DeRose, Pixar Animation Studios"[1].
+It is currently a rather verbatim copy of an example code included in above paper.
+
+
+[1] - http://graphics.pixar.com/library/WaveletNoise/paper.pdf
