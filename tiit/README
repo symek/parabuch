@@ -1,9 +1,6 @@
-TIIT is a tiny tool for image file inspection.
-
-It was inspired by Houdini's and OpenImageIO's  'iinfo' utility. 
-(First one doesn't do much besides printing rasters info, 
-second one crashes being confused by per plane bit depth
-variance in a file.)
+TIIT is a tiny tool for image file inspection based on Houdini's 
+HDK image library. It meant to work similary to Houdini's and OpenImageIO's 
+'iinfo' utilities adding some functionalities. 
 
 tiit does:
 	- check file integrity (if it can be loaded into memory).
