@@ -4,7 +4,7 @@
 #include <UT/UT_MTwister.h>
 #define ARAD 16
 #define SIZE 64
-#define OLAP 8
+#define OLAP 2
 
 // Static tile array and its size:
 static float *noiseTileData = NULL; 
@@ -148,7 +148,7 @@ wlnoise(int, void *argv[], void *data)
 {
 
     const UT_Vector3 *pos   = (const UT_Vector3 *) argv[1]; 
-    const UT_Vector3 *scale = (const UT_Vector3 *) argv[2];
+    //const UT_Vector3 *scale = 1;//(const UT_Vector3 *) argv[2];
 	      float      *noise = (float*) argv[0];
 	float            *tile  = (float *) data;
 
@@ -158,7 +158,7 @@ wlnoise(int, void *argv[], void *data)
     
     float w[3][3], t, result = 0;
     
-   
+    UT_Vector3 *scale = new UT_Vector3(1.0, 1.0, 1.0);
     float p[3];
     p[0] = pos->x()*scale->x(); p[1] = pos->y()*scale->y(); p[2] = pos->z()*scale->z();
     
@@ -200,11 +200,11 @@ wlnoise(int, void *argv[], void *data)
 void
 newVEXOp(void *)
 {
-	new VEX_VexOp("wlnoise@*FVV", wlnoise, 
+	new VEX_VexOp("wlnoise@&FV", wlnoise, 
 			VEX_ALL_CONTEXT, 
 			my_init,
 			my_cleanup, 
 			VEX_OPTIMIZE_2,
-			false);
+			true);
 
 }
