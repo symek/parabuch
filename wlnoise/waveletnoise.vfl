@@ -1,0 +1,47 @@
+#include "gUtil.h"
+#include "gUtil.h"
+#define MAXOCT 100
+
+float
+pixarnoise(vector pos; float rough; float myscale; int myoctaves; float blur)
+{
+
+    float	scale, plimit, blend;
+    int		octaves; 
+    plimit = 2*blur; 
+    float nval = 0; 
+    vector pp = pos;
+    octaves = 0;
+    scale = myscale; 
+    
+    while (scale > plimit && octaves < myoctaves) 
+    { 
+	    nval += scale*(wlnoise(pp)); 
+	    scale *= rough; 
+	    pp *= 2; 
+	    octaves++; 
+	    //printf("%s", nval);
+    } 
+    if (scale > blur) 
+    { 
+	    blend = scale * clamp((scale/blur) - 1, 0, 0); 
+	    nval += blend * (wlnoise(pp) - .5); 
+    } 
+    return nval;
+}
+
+surface
+noisy(float rough = 1; 
+      float scale = 1; 
+      int octaves = 1;
+      float blur  = 10;)
+{
+    vector pp = ptransform("space:object", P);
+    Cf = fit(pixarnoise(pp*scale, rough, 1, octaves, blur), -1, 1, 0, 1);
+   
+    
+    //float f = wlnoise(pp*scale);
+   //Cf = set(f,f,f);
+   
+
+}
