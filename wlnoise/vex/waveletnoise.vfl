@@ -3,7 +3,7 @@
 #define MAXOCT 100
 
 float
-pixarnoise(vector pos; float rough; float myscale; int myoctaves; float blur)
+pixarnoise(vector pos; float rough; float myscale; int myoctaves; float blur; vector nn)
 {
 
     float	scale, plimit, blend;
@@ -16,7 +16,7 @@ pixarnoise(vector pos; float rough; float myscale; int myoctaves; float blur)
     
     while (scale > plimit && octaves < myoctaves) 
     { 
-	    nval += scale*(wlnoise(pp)); 
+	    nval += scale*(wlpnoise(pp, nn)); 
 	    scale *= rough; 
 	    pp *= 2; 
 	    octaves++; 
@@ -25,8 +25,8 @@ pixarnoise(vector pos; float rough; float myscale; int myoctaves; float blur)
     if (scale > blur) 
     { 
 	    blend = scale * clamp((scale/blur) - 1, 0, 0); 
-	    nval += blend * (wlnoise(pp) - .5); 
-    } 
+	    nval += blend * (wlpnoise(pp, nn) - .5); 
+    }  
     return nval;
 }
 
@@ -34,10 +34,18 @@ surface
 noisy(float rough = 1; 
       float scale = 1; 
       int octaves = 1;
-      float blur  = 10;)
+      float blur  = .001;
+      float ss    = 1;
+      int   fb    = 1;
+      int   nb    = 3;
+      vector w    = 1)
 {
+    //vector nn = normalize(frontface(N, -I));
+    vector on = ntransform("space:object", N);
     vector pp = ptransform("space:object", P);
-    Cf = fit(pixarnoise(pp*scale, rough, 1, octaves, blur), -1, 1, 0, 1);
+    //Cf = fit(pixarnoise(pp*scale, rough, 1, octaves, blur, on), -1, 1, 0, 1);
+    Cf   = wlmnoise(pp*scale, ss, on, fb, nb, w); 
+    //Cf   = wlnoise(pp*scale);
    
     
     //float f = wlnoise(pp*scale);
