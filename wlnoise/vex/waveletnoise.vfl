@@ -1,9 +1,15 @@
 #include "gUtil.h"
 #include "gUtil.h"
-#define MAXOCT 100
+
+#pragma  choice type 0 "Turbulance Wavelet"
+#pragma  choice type 1 "Multiband Projected"
+#pragma  choice type 2 "Singe Band Wavelet" 
+#pragma  choice type 3 "Projected Wavelet"
+
+
 
 float
-pixarnoise(vector pos; float rough; float myscale; int myoctaves; float blur; vector nn)
+turbulancewavlete(vector pos; float rough; float myscale; int myoctaves; float blur; vector nn)
 {
 
     float	scale, plimit, blend;
@@ -31,25 +37,28 @@ pixarnoise(vector pos; float rough; float myscale; int myoctaves; float blur; ve
 }
 
 surface
-noisy(float rough = 1; 
+PixarWavelNoice(int type = 0;
+      float rough = 1; 
       float scale = 1; 
-      int octaves = 1;
+      int octaves = 4;
       float blur  = .001;
-      float ss    = 1;
+      float ss    = -4;
       int   fb    = 1;
-      int   nb    = 3;
       vector w    = 1)
 {
-    //vector nn = normalize(frontface(N, -I));
+    
     vector on = ntransform("space:object", N);
     vector pp = ptransform("space:object", P);
-    //Cf = fit(pixarnoise(pp*scale, rough, 1, octaves, blur, on), -1, 1, 0, 1);
-    Cf   = wlmnoise(pp*scale, ss, on, fb, nb, w); 
-    //Cf   = wlnoise(pp*scale);
-   
-    
-    //float f = wlnoise(pp*scale);
-   //Cf = set(f,f,f);
-   
+    if (type == 0)
+            Cf = fit(turbulancewavlete(pp*scale, rough, 1, octaves, blur, on), -1, 1, 0, 1);
+    if (type == 1)
+    {
+            int myoctaves = clamp(octaves, 1, 3);
+            Cf = wlmnoise(pp*scale, ss, on, fb, myoctaves, w); 
+    }
+    if (type == 2)
+        Cf   = wlnoise(pp*scale);
+    if (type == 3)
+        Cf   = wlpnoise(pp*scale, on);
 
 }

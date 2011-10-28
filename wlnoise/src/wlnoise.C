@@ -198,7 +198,7 @@ my_init()
     }
     else
         refCounter++;
-    cout << "refCounter++ " << refCounter << endl;
+    //cout << "refCounter++ " << refCounter << endl;
 	return noiseTileData;
 }
 
@@ -208,7 +208,7 @@ my_cleanup(void *data)
     float *tile = (float*)data;
     UT_ASSERT(tile == noiseTileData);
     refCounter--;
-     cout << "refCounter-- " << refCounter << endl;
+    // cout << "refCounter-- " << refCounter << endl;
     if (refCounter <= 0)
     {
         cout << "Cleaning tile." << endl;
@@ -225,8 +225,8 @@ wlnoise(int, void *argv[], void *data)
 	      float      *noise = (float*) argv[0];
 	      //float      *tile  = (float *) data;
 
-    float p[3];
-    p[0] = pos->x(); p[1] = pos->y(); p[2] = pos->z();
+    float *p;
+    p = (float*)(pos->data());
     noise[0] = WNoise(p);
     
 }
@@ -240,9 +240,9 @@ wlpnoise(int, void *argv[], void *data)
 	      float      *noise   = (float*) argv[0];
 	     // float      *tile    = (float *) data;
 	
-	float p[3], normal[3];
-    p[0] = pos->x();      p[1] = pos->y();      p[2] = pos->z();
-    normal[0] = nor->x(); normal[1] = nor->y(); normal[2] = nor->z();
+	float *p, *normal;
+    p      = (float*)(pos->data());
+    normal = (float*)(nor->data());
     noise[0]  = WProjectedNoise(p, normal);
 }
 
@@ -258,13 +258,15 @@ wlmnoise(int, void *argv[], void *data)
 	      float      *noise   = (float*) argv[0];
 	      //float      *tile    = (float *) data;
      
-    float p[3], normal[3]; float w[3];
-    p[0] = pos->x();      p[1] = pos->y();      p[2] = pos->z();
-    normal[0] = nor->x(); normal[1] = nor->y(); normal[2] = nor->z();
-    float s = *ss; int firstBand = *fb; int nbands = *nb;
-    w[0] = ww->x();      w[1] = ww->y();      w[2] = ww->z();
-    
-    //printf("%f, %i, %i, %f%f%f", s, firstBand, nbands, w[0], w[1], w[2]);
+   
+   /// Can we do that (reference arguments instead of coping it)?
+   float *p, *normal, *w;
+    p      = (float*)(pos->data());
+    normal = (float*)(nor->data());
+    w      = (float*)(ww->data());
+    float s        = *ss; 
+    int firstBand  = *fb; 
+    int nbands     = *nb;
      
     //float p[3],float s,float *normal,int firstBand,int nbands,float *w
     float q[3], result=0, variance=0; int i, b;
@@ -274,16 +276,17 @@ wlmnoise(int, void *argv[], void *data)
         //cout << "Iam in!" << endl;
         for (i=0; i<=2; i++) 
             q[i]=2*p[i]*pow(2,firstBand+b);
-        if (!normal)
+        if (normal) /*FIXME: This doesn't work*/
             result +=  w[b] * WProjectedNoise(q,normal);
         else
             result += w[b] * WNoise(q);
     }   
     for (b=0; b<nbands; b++) 
         variance+=w[b]*w[b];
+        
     /* Adjust the noise so it has a variance of 1. */
     if (variance) 
-        result /= sqrt(variance * ((!normal) ? 0.296 : 0.210));
+        result /= sqrt(variance * ((normal) ? 0.296 : 0.210)); // FIXME: Nor this!
         
         
     noise[0] = result;
