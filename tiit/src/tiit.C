@@ -16,15 +16,17 @@
 #include <CMD/CMD_Args.h>
 #include <UT/UT_PtrArray.h>
 #include <PXL/PXL_Raster.h>
-#include <IMG/IMG_FileParms.h>
 #include <UT/UT_String.h>
+#include <UT/UT_Wavelet.h>
 
 // std cmath (to consider for isnan() and isinf())
 #include <cmath>
 #include<fstream>
 
-// Hash sha-1 stuff:
+// Hash sha-1:
 #include <openssl/sha.h>
+
+// std:
 #include <string.h>
 
 
@@ -76,7 +78,7 @@ void usage()
 	cout << "\t -f         fix NaNs and Infs if exist." << endl;
 	cout << "\t -p plane   replace working plane (default 'C')." << endl;
 	cout << "\t -w         print image wavelet signature." << endl;
-	cout << "\t -c file    compare wavelet sig of the image with file." << endl;
+	cout << "\t -c file    compare wavelet sig of the image with a file." << endl;
 	cout << "\t -S         Suppress output (only minimal data sutable for parasing)." << endl;
 	cout << "\t -m         Print meta-data." << endl;
 
@@ -120,30 +122,54 @@ void printBasicInfo(IMG_File *file, CMD_Args *args)
 	printf("\n");
 }
 
-void * printStats(const char *inputName, const char *plane_name)
+float *fixBadPixels(float *pixels, const int height, const int width)
+{
+	float  newpixel = 0.0;
+	
+	for (int i=0; i < height*width*3; i++)
+	{
+		if (std::isnan(pixels[i]) || std::isinf(pixels[i]))
+		{
+			newpixel += pixels[i-3];
+			newpixel += pixels[i+3];
+			newpixel += pixels[i-(width*3)];
+			newpixel += pixels[i+(width*3)];
+			//cout << "Old: " << pixels[i] << ", new: " << newpixel / 4.0 << endl;  
+			pixels[i] = newpixel / 4.0;
+			
+		}
+    }
+
+	return pixels;
+
+}
+
+void * printStats(const char *inputName, const char *plane_name, const int fixit)
 {
  
-    // Load time paramtersL
+    // Load time paramters:
     IMG_FileParms *parms = new IMG_FileParms();
     parms->readAlphaAsPlane();
     parms->setDataType(IMG_FLOAT);
     
-	UT_PtrArray<PXL_Raster *> images;
+    UT_PtrArray<PXL_Raster *> images;
     IMG_File *inputFile  = IMG_File::open(inputName, parms);
     bool loaded          = inputFile->readImages(images);
     const IMG_Stat &stat = inputFile->getStat();
     int px               = stat.getPlaneIndex(plane_name);
+    float min, max, avr, avg, avb;
+	min = max = avr = avg = avb = 0.0;
 	void *myData;
+	
     if (px != -1)
     {
-		float min, max, avr, avg, avb;
-		min = max = avr = avg = avb = 0.0;
 	    PXL_Raster *raster  = images(px);
 	    myData              = raster->getPixels();
-	    const float *buff   = (const float*)myData;
+	    float *buff         = (float*)myData;
 		int npix            = raster->getNumPixels();
+		cout << "Packing: " << raster->getPacking() << endl;
 
-	    /// Range & avarages:
+	    /// Range & avarages: FIXME: how many channels we have here?
         raster->getRange(min, max);
         cout << "Min value : " << min << endl;
         cout << "Max value : " << max << endl;
@@ -157,7 +183,7 @@ void * printStats(const char *inputName, const char *plane_name)
 	    avr /= npix; avg /= npix; avb /= npix;
 	    printf("Avarages  : %f, %f, %f\n", avr, avg, avb);
 
-		/// Nans:
+		/// Nans/Infs:
 		int nans = 0; int infs = 0;
 		for (int i = 0; i < npix*3; i++)
 	    {
@@ -166,8 +192,10 @@ void * printStats(const char *inputName, const char *plane_name)
 	    }
 		cout << "Nans found: " << nans << endl;
 		cout << "Infs found: " << infs << endl;
-
-
+		if (fixit && (nans || infs))
+	    {
+	        buff = fixBadPixels(buff, raster->getYres()-1, raster->getXres()-1);
+	    }
 
 	}
 
@@ -176,46 +204,46 @@ void * printStats(const char *inputName, const char *plane_name)
 	return myData;
 }
 
-/*
-void *fixBadPixels(void *data, const int height, const int width)
+const char *waveletSig(void *myData, float *weights, const int xsize, const int ysize)
 {
-
-	float *pixels   = (float *)data;
-	float  newpixel = 0.0;
-	
-	for (int i=0; i < height*width*3; i++)
-	{
-		if (std::isnan(pixels[i]) || std::isinf(pixels[i]))
-		{
-			newpixel += pixels[3*height*(i-1)+i*3];
-			newpixel += pixels[3*height*(i+1)+i*3];
-			newpixel += pixels[(3*height*i)+(3*(i+1))];
-			newpixel += pixels[(3*height*i)+(3*(i-1))];
-			pixels[i] = newpixel / 4.0;
-		}
-
-	return pixels;
-
+    float *pixels = (float*) myData;
+    UT_VoxelArrayF *input  = new UT_VoxelArrayF();
+    UT_VoxelArrayF *output = new UT_VoxelArrayF();
+    input->size(xsize, ysize, 1);
+    output->size(xsize, ysize, 1);
+           
+            
+    /// Copy from image to voxels:
+    for (int y = 0; y < ysize; y++)
+        for (int x = 0; x < xsize; x++)
+            input->setValue(x, y, 0, pixels[(xsize*y)+x]); 
+            
+    /// Make DWT:     
+    UT_Wavelet::transformOrdered(UT_Wavelet::WAVELET_HAAR, *input, *output, 8);
+    cout << "Wavelets done." << endl;
+    
+    return "wavelets";
 }
 
-*/
+
+
 
 int
 main(int argc, char *argv[])
 {	
- 	// No options? Exit:  
+ 	/// No options? Exit:  
 	if (argc == 1)
 	{
 		usage();
 		return 0;
 	}
   
-	/* Read argumets and options:*/
+	/// Read argumets and options:
 	CMD_Args args;
     args.initialize(argc, argv);
     args.stripOptions("p:c:w:ihsfSm");
 
-	/* File we work on: */
+	/// File we work on:/
 	const char *inputName = argv[argc-1];
 	//inputName.harden();
 	fstream fin(inputName);
@@ -225,7 +253,7 @@ main(int argc, char *argv[])
 		return 1;
 	}	
 	
-    /* At first we just open the file to read stat:*/
+    /// At first we just open the file to read stat:
     IMG_File *inputFile = NULL;
 	inputFile = IMG_File::open(inputName);
 	if (!inputFile)
@@ -234,30 +262,27 @@ main(int argc, char *argv[])
 		return 1;
 	}
 	
-	/* Print basic info: */
+	/// Print basic info:
 	static const IMG_Stat &stat = inputFile->getStat();
 	printBasicInfo(inputFile, &args);
 
-
-	/* Under this line all routines will require myData  */
-	/*-------------------------------------------------*/
-
+	/// Under this line all routines will require myData
 	UT_PtrArray<PXL_Raster *> images; // arrays of rasters
 	bool       loaded        = false; // did we load the file
 	const char *plane_name   = "C"  ; // default raster name
 	PXL_Raster *raster       = NULL;  // working raster 
 	void       *myData       = NULL;  // data ready to be casted
-	int  npix                = 0;          
+	int         npix         = 0;          
 	
-	/* Switch working plane if requested */ 
+	/// Switch working plane if requested 
 	if (args.found('p')) 
 	{
 		plane_name = args.argp('p');
 		cout << "Work plane: " << plane_name << endl;
 	}
 
-	/* 'Integrity check' basicaly means we try to load */
-	/* the file into memory: fail == it's broken.      */
+	/// 'Integrity check' basicaly means we try to load 
+	/// the file into memory: fail == it's broken.      
 	if (args.found('i') || args.found('h') || args.found('s') ||
 	    args.found('c') || args.found('w') || args.found('f'))
 	{
@@ -287,7 +312,7 @@ main(int argc, char *argv[])
 		}
 	}
 
-	/* Sha-1 hash generation */
+	/// Sha-1 hash generation 
 	if (args.found('h'))
 	{
 		if (myData)
@@ -306,21 +331,16 @@ main(int argc, char *argv[])
 		}
 	}
 
-	/* Print statistics:*/
-	if (args.found('s'))
+	/// Print statistics and optionally fix nans/infs: 
+	/// FIXME: fix doesn't work yet.
+	if (args.found('s') || args.found('f'))
 	{
-	    // I acctually have to reload the image with 32float,
-		// otherwise computing stats will be nightmare
-	     myData = printStats(inputName, plane_name); 
+	    /// I'm acctually reloading the image with 32float,
+	    //float *fpixels;
+	    myData = printStats(inputName, plane_name,  args.found('f'));
 	}
-		
-	/* Fix nans/infs: */
-	/*
-	if (args.found('f'))
-	{
-	    myData = fixBadPixels(myData, raster->getXres(), raster->getYres()); 
-	}*/
-
+	
+	/// Meta data:
 	if (args.found('m'))
 	{
 		UT_String info = "";
@@ -329,124 +349,17 @@ main(int argc, char *argv[])
 	}
 
 
-	/*
-    PXL_Raster *A  = NULL;
-    PXL_Raster *C  = NULL;
-	
-    
-    
-    // Set parameters for loading an image:
-    // Specifically wa want to have an alpha in separate plane
-    // for a moment.
-    IMG_FileParms *parms = new IMG_FileParms();
-    //parms->setInterleaved(IMG_NON_INTERLEAVED);
-	parms->readAlphaAsPlane();
-	parms->setDataType(IMG_FLOAT);
-	//parms->scaleImageTo(512, 512);
-    
-     
-    // TODO: Need to check if an option is a valid path,
-    // before accessing it.
-    if (args.found('f')) {
-        cout << "\tLoading in: " << args.argp('f') << endl;
-        file = IMG_File::open(args.argp('f'), parms);
-    }
-    
-    // Load an rasters. We need to decide prior which raster to load.
-    // Currently I'm aiming to work on alpha channel solely.
-    if (file)
-     {
-        // Load in statistics and find planes:
-        static const IMG_Stat &stat = file->getStat();
-        isLoaded = file->readImages(images);
-        cout << "\tResolution: " << stat.getXres() << " x " << stat.getYres() << endl; 
-          
-        if (isLoaded) 
+    if (args.found('w'))
+    {
+        if (myData)
         {
-            // Get main plates:
-            A = images(stat.getPlaneIndex("A"));
-            C = images(stat.getPlaneIndex("C"));
-			cout << "\tImg valid?: " << C->isValid() << endl;
-			void        *data = C->getPixels();
-			const float *buff = (const float*)data;	
-            
-            // List planes:
-            cout << "\tOur Planes: ";
-            for (int i = 0; i < stat.getNumPlanes(); i++)
-            {
-                cout << stat.getPlane(i)->getName() << " / ";
-                //cout << IMG_DataType(stat.getPlane(i)->getDataType())<< ", " ;
-            
-            }
-            cout << endl;
-            
-            // Perform stats:
-            if (args.found('s'))
-            {
-                float min, max, avr, avg, avb = 0.0;
-				int   npix;
+            const char *sig;
+            float weights[3] = {1, 1, 1};
+            sig = waveletSig(myData, weights, raster->getXres(), raster->getYres());
+        }
+    }
 
-				// Range, npixels:
-                C->getRange(min, max);
-                cout << "\tMin  pixel: " << min << endl;
-                cout << "\tMax  pixel: " << max << endl;
-				npix = C->getNumPixels();
-						
-				// Avarage pixels values:
-				for (int i =0; i < npix*3; i+=3)
-				{
-					avr  +=  buff[i];
-					avg  +=  buff[i+1];
-					avb  +=  buff[i+2];
-				}
-				avr /= npix; avg /= npix; avb /= npix;
-				printf("\tAvarage  C: %f, %f, %f\n", avr, avg, avb);				
-            }
-            
-            // Perform hash:
-			// TODO: consider freeing openssl dependency:
-            if (args.found('h'))
-            {
-                printHash((const unsigned char*) data);
 
-			cout << "\tSHA-1  key: ";
-    for (i = 0; i < 20; i++) 
-    {
-        printf("%02x", md[i]);
-    }
-    return hash;
-            }
-        } 
-		else
-		{
-			cout << "\tCan't load this image: " << args.argp('f') << endl;
-		}
-    }
-    else 
-    {
-        cout << "\tCant't find this file: " << args.argp('f') << endl;
-    }
-    
-   	cout << endl;
-	//IMG_File::copyToFile(args.argp('f'), "/tmp/test.exr", parms);
-	*/
-	/*
-	int lev;
-	int lpass;
-	int scales = 100;
-	unsigned int tmp;
-	for (lev = 0; lev < scales; lev++)
-    {
-      lpass = (1 - (lev & 1));
-      tmp = 1 << lev;
-      cout << lev << "," << lpass << ", " << tmp << endl;
-    }
-    
-    float *tttt = new float [16];
-    for (lev = 0; lev < 16; lev++)
-    {
-         tttt[lev] = float(lev);
-         cout << tttt[lev] << endl;
-    }*/
+
 
 }
