@@ -1,5 +1,7 @@
-This is a HDK based converter to Houdini's bgeo volumetric format 
-from a research solid tileable textures to be found here:
+This is a HDK based converter to Houdini's bgeo and i3d volumetric formats 
+from a *.vol files, which are a solid tile-able textures created as a part 
+of below research. Authors of the paper kindy provide a number of synthetized 
+textures on their website.
 
 http://johanneskopf.de/publications/solid/index.html
 
@@ -14,10 +16,6 @@ http://johanneskopf.de/publications/solid/index.html
     pages   = {2:1--2:9},
 }
 
-Authors of the paper kindy provide a number of synthetized textures on their 
-website.
-Once you have a bgeo from them, it can be used directly to shade your object 
-or converted yet again to *.i3d 3d texture and used very efficently.
 
-Here is a Maya plugin integrating solid textures directly into Maya:
+There is also a Maya plugin integrating *.vol textures directly into Maya:
 http://johanneskopf.de/publications/solid/plugin/index.html
