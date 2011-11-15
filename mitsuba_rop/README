@@ -1,0 +1,5 @@
+This is a Houdini's Soho module for Mitsuba phisicaly based renderer:
+http://www.mitsuba-renderer.org
+
+It is currently very basic, and I won't promise it will go much further.
+Main purpose was to test some hair/cloth rendering archtecture in Mitsuba.
