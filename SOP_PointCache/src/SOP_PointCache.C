@@ -16,6 +16,8 @@
 #include <OP/OP_OperatorTable.h>
 #include <SOP/SOP_Guide.h>
 #include <SYS/SYS_Math.h>
+#include <UT/UT_Spline.h>
+#include <UT/UT_Color.h>
 #include "SOP_PointCache.h"
 
 #include <stdio.h>
@@ -37,13 +39,26 @@ newSopOperator(OP_OperatorTable *table)
 }
 
 static PRM_Name names[] = {
-    PRM_Name("filename",	"Filename"),
+    PRM_Name("filename",	"PC2 File"),
+    PRM_Name("interpol",    "Interpolation"),
 };
+
+
+static PRM_Name         interpolChoices[] =
+{
+    PRM_Name("0", "None"),
+    PRM_Name("1", "Linear"),
+    PRM_Name("2", "Catmull-Rom"),
+    PRM_Name(0)
+};
+
+static PRM_ChoiceList  interpolMenu(PRM_CHOICELIST_SINGLE, interpolChoices);
 
 PRM_Template
 SOP_PointCache::myTemplateList[] = {
     PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu),
     PRM_Template(PRM_FILE,	1, &names[0], PRMoneDefaults, 0),
+    PRM_Template(PRM_ORD, 1, &names[1], 0, &interpolMenu),
     PRM_Template(),
 };
 
@@ -59,6 +74,7 @@ SOP_PointCache::SOP_PointCache(OP_Network *net, const char *name, OP_Operator *o
 {
     pc2 = NULL;
     points = NULL;
+    dointerpolate = NULL;
 }
 
 SOP_PointCache::~SOP_PointCache() {delete points;}
@@ -100,13 +116,13 @@ PC2_File::loadFile(UT_String *file)
 /// Read into (float)*pr of size 3*sizeof(float)*numpoints*steps 
 /// position from a opened file in (float) time, along with supersampaled (int) steps. 
 int
-PC2_File::getPArray(float time, int steps, float *pr)
+PC2_File::getPArray(int sample, int steps, float *pr)
 {
     int success;
 	FILE * fin = fopen(filename->buffer(), "rb");
 	if (fin == NULL) 
         return 0;
-	long offset = 32 + (3*sizeof(float)*header->numPoints) * time;
+	long offset = 32 + (3*sizeof(float)*header->numPoints) * sample;
     fseek(fin, offset, SEEK_SET);
     success = fread(pr, sizeof(float), steps*header->numPoints*3, fin);
     fclose(fin);
@@ -122,15 +138,15 @@ SOP_PointCache::cookMySop(OP_Context &context)
     double		 t;
  
     UT_String filename;
+    UT_String interpol_str;
+    int interpol;
+    UT_Spline *spline = NULL;
     /// Info buffers
     char info_buff[200];
     const char *info;
     /// Flag to indicate new point
     /// array needs to be allocated
     bool reallocate = false;
-    
-    /// This is placeholder for time-steps variable
-    int steps = 1;
 
     /// Make time depend:
     OP_Node::flags().timeDep = 1;
@@ -141,11 +157,25 @@ SOP_PointCache::cookMySop(OP_Context &context)
    
     /// Duplicate our incoming geometry 
     duplicatePointSource(0, context);
+    
+    /// Eval parms. 
+    /// FIXME: interpol!!! (str or int menu?)
     t = context.getTime();
     FILENAME(filename, t);
+    interpol = INTERPOL(interpol_str, t);
     
-    /// FIXME: Currently using int frame instead of float frame:
-    float frame = (float) context.getFrame();
+    /// We need to keep track of that 
+    /// in case user changes setting:
+    if (!dointerpolate) dointerpolate = interpol;
+    if (dointerpolate != interpol) reallocate = true;
+
+    /// It's a hack FIXME: trigger reallocation in case 'interpol' changes.
+    /// I don't know how to use callback on parameter.
+    reallocate = true;
+    
+    /// Get frame. FIXME: This should be probably provided
+    /// by an user.
+    float frame = (float) context.getFloatFrame();
     
     /// Create pc2 file object only once:
     if (!pc2) 
@@ -179,8 +209,11 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	info = &info_buff[0];
 	addMessage(SOP_MESSAGE, info);
 	
-	/// Allocte points' position array, then...
-    /// (reallocate in case file changed)
+	/// Allocte points' position array, then reallocate in case file changed
+    /// Also adjust time steps, i.e.: one step for no interpolation, two for linear,
+    /// three (starting backwards + current + next) for cubic. I should use here BRI
+    /// from Timeblender project here, instead of cutmull-rom.
+    int steps = interpol + 1;
     if (!points || reallocate)
     {
         if (reallocate) 
@@ -193,17 +226,43 @@ SOP_PointCache::cookMySop(OP_Context &context)
         }   
     }
 	
-	/// ...abandom if frame exceeds samples range or...
-	if ((frame > pc2->header->numSamples) || (frame < pc2->header->startFrame))
+	/// Abandom if frame exceeds samples range.
+	/// In case of supersampling we switch limit to take
+	/// sampling rate into account. 
+	int frame_limit = (!interpol) ? pc2->header->numSamples : \
+	(pc2->header->numSamples * pc2->header->sampleRate);
+	if ((frame > frame_limit) || (frame < pc2->header->startFrame))
 	{
-	    addWarning(SOP_MESSAGE, "Frame exceeds samples range in file.");
+	    addWarning(SOP_MESSAGE, "Frame exceeds samples range from file.");
         return error();
 	}
 	
-    ///... get array at current 'time', 'steps' wide to 'points' array 
-    if (!pc2->getPArray(frame, steps, points))
+	/// Supersampling / Interpolation:
+	/// In case of cubic, we shift sample -1, and take 3 steps,
+	/// None and linear require 2 steps and sample == current == $F-1.
+	/// Delta will be used to drive interpolants (0,1). 
+	float sample = (!interpol) ? (frame-1) : (frame-1) * (1.0/pc2->header->sampleRate);
+	float delta  = sample - SYSfloor(sample);
+	sample       = SYSfloor(sample);
+	
+	/// We also create a single spline object.
+	if (interpol == PC2_CUBIC)
+	{
+	    sample -= 1; 
+	    sample = SYSclamp(sample, 0.0f, 1.0*pc2->header->numSamples);
+	    spline = new UT_Spline(); 
+        spline->setGlobalBasis(UT_SPLINE_CATMULL_ROM);
+        spline->setSize(3, 3);
+	}
+	
+	/// Don't deceive user if no supersamples found in a file:
+	if (interpol && pc2->header->sampleRate==1.0)
+	    addWarning(SOP_MESSAGE, "Sample rate is 1.0, so interpolation will NOT be correct.");
+	
+    /// Load array at 'sample', 'steps' wide, to 'points' array 
+    if (!pc2->getPArray((int) sample, steps, points))
     {
-        addWarning(SOP_MESSAGE, "Can't load points.");
+        addWarning(SOP_MESSAGE, "Can't load points[] from file.");
         return error();
     }
     
@@ -211,23 +270,61 @@ SOP_PointCache::cookMySop(OP_Context &context)
     ///	handle point groups.
     if (error() < UT_ERROR_ABORT && cookInputGroups(context) < UT_ERROR_ABORT)
     {
-        int ptnum = 0;
+        int ptnum     = 0;
+        int numPoints = pc2->header->numPoints;
         FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
 	    {
 	        UT_Vector4 p;
 	        p = ppt->getPos();
-            p.x() = points[3*ptnum];
-            p.y() = points[3*ptnum+1];
-            p.z() = points[3*ptnum+2];
+	        if (interpol == PC2_NONE)
+	        {
+                p.x() = points[3*ptnum];
+                p.y() = points[3*ptnum+1];
+                p.z() = points[3*ptnum+2];
+            }
+            else if (interpol == PC2_LINEAR)
+            {
+                /// Array is flat and cont.:, 
+                /// ax,ay,az,bx,by,bz, then next sample: ax,ay,az,bx...
+                p.x() = SYSlerp(points[3*ptnum  ], points[3*(ptnum + numPoints)],   delta);
+                p.y() = SYSlerp(points[3*ptnum+1], points[3*(ptnum + numPoints)+1], delta);
+                p.z() = SYSlerp(points[3*ptnum+2], points[3*(ptnum + numPoints)+2], delta);
+            
+            }
+            else if (interpol == PC2_CUBIC)
+            {
+                fpreal32 pp[] = {0.0, 0.0, 0.0};
+                fpreal32 v0[] = {points[3*ptnum], 
+                                 points[3*ptnum+1], 
+                                 points[3*ptnum+2]};
+                fpreal32 v1[] = {points[3*(ptnum + numPoints)], 
+                                 points[3*(ptnum + numPoints)+1], 
+                                 points[3*(ptnum + numPoints)+2]};
+                fpreal32 v2[] = {points[3*(ptnum + numPoints*2)], 
+                                 points[3*(ptnum + numPoints*2)+1], 
+                                 points[3*(ptnum + numPoints*2)+2]};
+                
+                spline->setValue(0, v0, 3); 
+                spline->setValue(1, v1, 3); 
+                spline->setValue(2, v2, 3);
+                
+                /// Finally eval. spline and assign result to vector
+                spline->evaluate(delta, pp, 3, (UT_ColorType)2);
+                p.assign(pp[0], pp[1], pp[2], 1.0);
+            }
             ppt->getPos() = p;
             ptnum++;
-            /// We really shouln't iterate over this boundary:
-            ptnum = SYSclamp(ptnum, 0, pc2->header->numPoints-1);
+            
+            /// We really shouln't go over this boundary...
+            ptnum = SYSclamp(ptnum, 0, numPoints-1);
 	    }
+	   
     }
-
+    
     // Notify the display cache that we have directly edited
     gdp->notifyCache(GU_CACHE_ALL);
+    if (spline) 
+        delete spline;
     unlockInputs();
     return error();
 }

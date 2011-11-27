@@ -17,6 +17,12 @@ struct PC2Header
 	int numSamples;
 };
 
+enum PC2_Interpol_Type
+{
+    PC2_NONE,
+    PC2_LINEAR,
+    PC2_CUBIC,
+};
 
 class PC2_File
 {
@@ -33,12 +39,12 @@ public:
             loaded = success; 
          }
     }
-    ~PC2_File();//{delete header; delete filename;}
+    ~PC2_File();
     int loadFile(UT_String *file);
     int loadFile() { return loadFile(filename);}
     int isLoaded() { return loaded;}
     int setUnload() {loaded = 0; return 1;} 
-    int getPArray(float time, int steps, float *pr);
+    int getPArray(int sample, int steps, float *pr);
     UT_String * getFilename() {return filename;}
     PC2Header *header;
     
@@ -68,6 +74,11 @@ protected:
 private:
     void	getGroups(UT_String &str){ evalString(str, "group", 0, 0); }
     void    FILENAME(UT_String &str, float t){ return evalString(str, "filename", 0, t);}
+    int     INTERPOL(UT_String &str, float t)
+            {   
+                evalString(str, "interpol", 0, t);
+                return SYSatoi(str.buffer());
+            }
 
     /// This variable is used together with the call to the "checkInputChanged"
     /// routine to notify the handles (if any) if the input has changed.
@@ -76,6 +87,7 @@ private:
     /// by the method "cookInputGroups".
     const GB_PointGroup	*myGroup;
     float               *points;
+    int                 dointerpolate;
     PC2_File            *pc2;
 };
 } // End PC2SOP namespace
