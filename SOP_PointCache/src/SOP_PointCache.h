@@ -33,7 +33,7 @@ public:
             loaded = success; 
          }
     }
-    ~PC2_File();
+    ~PC2_File();//{delete header; delete filename;}
     int loadFile(UT_String *file);
     int loadFile() { return loadFile(filename);}
     int isLoaded() { return loaded;}

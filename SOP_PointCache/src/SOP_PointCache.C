@@ -35,7 +35,7 @@ newSopOperator(OP_OperatorTable *table)
 					 0));
 }
 
-static PRM_Name        names[] = {
+static PRM_Name names[] = {
     PRM_Name("filename",	"Filename"),
 };
 
@@ -117,10 +117,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
 {
     GEO_Point *ppt;
     double		 t;
+ 
     UT_String filename;
+    /// Info buffers
     char info_buff[200];
     const char *info;
-    /// Do we need new parray?
+    /// Flag to indicate new point
+    /// array needs to be allocated
     bool reallocate = false;
     
     /// This is placeholder for time-steps variable
@@ -131,7 +134,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     
     /// Before we do anything, we must lock our inputs. 
     if (lockInputs(context) >= UT_ERROR_ABORT)
-	    return error();
+        return error();
    
     /// Duplicate our incoming geometry 
     duplicatePointSource(0, context);
@@ -181,18 +184,18 @@ SOP_PointCache::cookMySop(OP_Context &context)
         points = new float[3*pc2->header->numPoints*steps];
     }
 	
-	/// ...abandom if frame exceeds numSamples orr...
-	if (frame > pc2->header->numSamples)
+	/// ...abandom if frame exceeds samples range or...
+	if ((frame > pc2->header->numSamples) || (frame < pc2->header->startFrame))
 	{
 	    addWarning(SOP_MESSAGE, "Frame exceeds samples' range in file.");
-	    return error();
+        return error();
 	}
 	
-    ///... get array from file: 
+    ///... get array at current 'time', 'steps' wide to 'points' array 
     if (!pc2->getPArray(frame, steps, points))
     {
         addWarning(SOP_MESSAGE, "Can't load points data.");
-	    return error();
+        return error();
     }
     
     /// Here we determine which groups we have to work on.  We only
@@ -200,22 +203,21 @@ SOP_PointCache::cookMySop(OP_Context &context)
     if (error() < UT_ERROR_ABORT && cookInputGroups(context) < UT_ERROR_ABORT)
     {
         int ptnum = 0;
-	     FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
+        FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
 	    {
 	        UT_Vector4 p;
 	        p = ppt->getPos();
-	        p.x() = points[3*ptnum];
-	        p.y() = points[3*ptnum+1];
-	        p.z() = points[3*ptnum+2];
-	        ppt->getPos() = p;
-	        ptnum++;
+            p.x() = points[3*ptnum];
+            p.y() = points[3*ptnum+1];
+            p.z() = points[3*ptnum+2];
+            ppt->getPos() = p;
+            ptnum++;
 	    }
     }
 
     // Notify the display cache that we have directly edited
     gdp->notifyCache(GU_CACHE_ALL);
     unlockInputs();
-    pc2->setUnload();
     return error();
 }
 
