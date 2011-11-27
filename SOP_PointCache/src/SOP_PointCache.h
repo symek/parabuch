@@ -22,28 +22,30 @@ class PC2_File
 {
 public: 
     PC2_File();
-    PC2_File(const char* file, int load = 0)
+    PC2_File(UT_String *file, int load = 0)
     {
-        int success = 0;
+        filename = new UT_String(file->buffer());
+        filename->harden();        
         if (file && load)
         {
+            int success = 0;
             success = loadFile(file); 
             loaded = success; 
-            filename = file;
          }
     }
     ~PC2_File();
-    int loadFile(const char *file);
+    int loadFile(UT_String *file);
     int loadFile() { return loadFile(filename);}
     int isLoaded() { return loaded;}
     int setUnload() {loaded = 0; return 1;} 
-    int getPArray(float time, float *pr);
+    int getPArray(float time, int steps, float *pr);
+    UT_String * getFilename() {return filename;}
     PC2Header *header;
     
 private:
     const char *buffer[32];
     int loaded;
-    const char *filename;
+    UT_String  *filename;
 };
 
 

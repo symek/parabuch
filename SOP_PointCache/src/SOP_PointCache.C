@@ -70,19 +70,22 @@ SOP_PointCache::cookInputGroups(OP_Context &context, int alone)
     return cookInputPointGroups(context, myGroup, myDetailGroupPair, alone);
 }
 
+
+/// Read pc2 header storing it in PC2_File->header structure.
+/// Also validates point cache file.
 int
-PC2_File::loadFile(const char *file)
+PC2_File::loadFile(UT_String *file)
 {
-    int success; 
-    filename = file;
-	FILE * fin = fopen(file, "rb");
+    int success;
+    filename->harden(file->buffer());
+	FILE * fin = fopen(file->buffer(), "rb");
 	if (fin == NULL) 
 	    return 0;
 	success = fread(buffer, 32, 1, fin);
 	if (!success) 
 	    return 0;
 	header = (PC2Header*) buffer;
-	if (header->magic == "POINTCACHE2" && header->version == 1)
+	if (UT_String("POINTCACHE2").hash() == file->hash() && header->version == 1)
 	    return 1;
 	
 	fclose(fin);
@@ -90,16 +93,19 @@ PC2_File::loadFile(const char *file)
 	return 1;
 }
 
+
+/// Read into (float)*pr of size 3*sizeof(float)*numpoints*steps 
+/// position from a opened file in (float) time, along with supersampaled (int) steps. 
 int
-PC2_File::getPArray(float time, float *pr)
+PC2_File::getPArray(float time, int steps, float *pr)
 {
     int success;
-	FILE * fin = fopen(filename, "rb");
+	FILE * fin = fopen(filename->buffer(), "rb");
 	if (fin == NULL) 
 	    return 0;
 	long offset = 32 + (3*sizeof(float)*header->numPoints) * time;
     fseek(fin, offset, SEEK_SET);
-    success = fread(pr, sizeof(float), header->numPoints*3, fin);
+    success = fread(pr, sizeof(float), steps*header->numPoints*3, fin);
     fclose(fin);
     if (!success) return 0;
     return 1;
@@ -112,6 +118,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
     GEO_Point *ppt;
     double		 t;
     UT_String filename;
+    char info_buff[200];
+    const char *info;
+    /// Do we need new parray?
+    bool reallocate = false;
+    
+    /// This is placeholder for time-steps variable
+    int steps = 1;
 
     /// Make time depend:
     OP_Node::flags().timeDep = 1;
@@ -128,28 +141,55 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// FIXME: Currently using int frame instead of float frame:
     float frame = (float) context.getFrame() - 1.0;
     
-    /// pc2 file object create only once:
-    if (!pc2) pc2 = new PC2_File(filename.buffer());
-    
-    /// FIXME: We should compare filnames to check if
-    /// we have to reload a header and recreate a pc2:
-    if (!pc2->loadFile(filename.buffer()))
+    /// Create pc2 file object only once:
+    if (!pc2) 
     {
-        addWarning(SOP_ERR_FILEGEO, "Can't open file.");
-        return error();
-	}   
+        pc2 = new PC2_File(&filename);
+        if (!pc2->loadFile(&filename))
+        {  
+            addWarning(SOP_ERR_FILEGEO, "Can't open file.");
+            return error();
+         }
+    }
+    
+    /// Reload header if filename changed from a last time
+    if (pc2->getFilename()->hash() != filename.hash())
+    {
+        reallocate = true;
+        if (!pc2->loadFile(&filename))
+        {
+            addWarning(SOP_ERR_FILEGEO, "Can't open file.");
+            return error();
+        }  
+    }
+   
+	/// Lets give an user some information:
+	sprintf(info_buff,"File   : %s \nPoints : %d \nStart  : %f \nRate   : %f \nSamples: %d", 
+	            filename.buffer(),  pc2->header->numPoints, pc2->header->startFrame, 
+	            pc2->header->sampleRate, pc2->header->numSamples);
+	                       
+	/// Is it ugly?
+	info = &info_buff[0];
+	addMessage(SOP_MESSAGE, info);
 	
+	/// Allocte points' position array, then...
+    /// (reallocate in case file changed)
+    if (!points || reallocate)
+    {
+        if (reallocate) 
+            delete points;
+        points = new float[3*pc2->header->numPoints*steps];
+    }
+	
+	/// ...abandom if frame exceeds numSamples orr...
 	if (frame > pc2->header->numSamples)
 	{
 	    addWarning(SOP_MESSAGE, "Frame exceeds samples' range in file.");
 	    return error();
 	}
 	
-    /// Allocte points' position array and get it from file:
-    if (!points)
-        points = new float[3*pc2->header->numPoints];
-        
-    if (!pc2->getPArray(frame, points))
+    ///... get array from file: 
+    if (!pc2->getPArray(frame, steps, points))
     {
         addWarning(SOP_MESSAGE, "Can't load points data.");
 	    return error();
@@ -159,7 +199,6 @@ SOP_PointCache::cookMySop(OP_Context &context)
     ///	handle point groups.
     if (error() < UT_ERROR_ABORT && cookInputGroups(context) < UT_ERROR_ABORT)
     {
-        //cout << "Inside coolINputGroups" << endl;
         int ptnum = 0;
 	     FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
 	    {
@@ -176,6 +215,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     // Notify the display cache that we have directly edited
     gdp->notifyCache(GU_CACHE_ALL);
     unlockInputs();
+    pc2->setUnload();
     return error();
 }
 
