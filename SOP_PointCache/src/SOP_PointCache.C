@@ -15,6 +15,7 @@
 #include <OP/OP_Operator.h>
 #include <OP/OP_OperatorTable.h>
 #include <SOP/SOP_Guide.h>
+#include <SYS/SYS_Math.h>
 #include "SOP_PointCache.h"
 
 #include <stdio.h>
@@ -80,17 +81,19 @@ PC2_File::loadFile(UT_String *file)
     filename->harden(file->buffer());
 	FILE * fin = fopen(file->buffer(), "rb");
 	if (fin == NULL) 
-	    return 0;
+        return 0;
 	success = fread(buffer, 32, 1, fin);
-	if (!success) 
-	    return 0;
-	header = (PC2Header*) buffer;
-	if (UT_String("POINTCACHE2").hash() == file->hash() && header->version == 1)
-	    return 1;
-	
 	fclose(fin);
-	loaded = 1;
-	return 1;
+	if (!success) 
+        return 0;
+	header = (PC2Header*) buffer;
+	if ((UT_String("POINTCACHE2").hash() == UT_String(header->magic).hash()) \
+	                 && (header->version == 1))
+	{
+        return 1;
+        loaded = 1;
+	}
+	return 0;
 }
 
 
@@ -102,7 +105,7 @@ PC2_File::getPArray(float time, int steps, float *pr)
     int success;
 	FILE * fin = fopen(filename->buffer(), "rb");
 	if (fin == NULL) 
-	    return 0;
+        return 0;
 	long offset = 32 + (3*sizeof(float)*header->numPoints) * time;
     fseek(fin, offset, SEEK_SET);
     success = fread(pr, sizeof(float), steps*header->numPoints*3, fin);
@@ -142,7 +145,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     FILENAME(filename, t);
     
     /// FIXME: Currently using int frame instead of float frame:
-    float frame = (float) context.getFrame() - 1.0;
+    float frame = (float) context.getFrame();
     
     /// Create pc2 file object only once:
     if (!pc2) 
@@ -150,18 +153,19 @@ SOP_PointCache::cookMySop(OP_Context &context)
         pc2 = new PC2_File(&filename);
         if (!pc2->loadFile(&filename))
         {  
-            addWarning(SOP_ERR_FILEGEO, "Can't open file.");
+            addWarning(SOP_ERR_FILEGEO, "Can't open this file.");
             return error();
          }
     }
     
     /// Reload header if filename changed from a last time
+    /// FIXME: We should also check if inputGeo has changed.
     if (pc2->getFilename()->hash() != filename.hash())
     {
         reallocate = true;
         if (!pc2->loadFile(&filename))
         {
-            addWarning(SOP_ERR_FILEGEO, "Can't open file.");
+            addWarning(SOP_ERR_FILEGEO, "Can't open this file.");
             return error();
         }  
     }
@@ -182,19 +186,24 @@ SOP_PointCache::cookMySop(OP_Context &context)
         if (reallocate) 
             delete points;
         points = new float[3*pc2->header->numPoints*steps];
+        if (!points)
+        {
+            addWarning(SOP_MESSAGE, "Can't allocate storage.");
+            return error();
+        }   
     }
 	
 	/// ...abandom if frame exceeds samples range or...
 	if ((frame > pc2->header->numSamples) || (frame < pc2->header->startFrame))
 	{
-	    addWarning(SOP_MESSAGE, "Frame exceeds samples' range in file.");
+	    addWarning(SOP_MESSAGE, "Frame exceeds samples range in file.");
         return error();
 	}
 	
     ///... get array at current 'time', 'steps' wide to 'points' array 
     if (!pc2->getPArray(frame, steps, points))
     {
-        addWarning(SOP_MESSAGE, "Can't load points data.");
+        addWarning(SOP_MESSAGE, "Can't load points.");
         return error();
     }
     
@@ -212,6 +221,8 @@ SOP_PointCache::cookMySop(OP_Context &context)
             p.z() = points[3*ptnum+2];
             ppt->getPos() = p;
             ptnum++;
+            /// We really shouln't iterate over this boundary:
+            ptnum = SYSclamp(ptnum, 0, pc2->header->numPoints-1);
 	    }
     }
 
