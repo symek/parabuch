@@ -241,8 +241,8 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	/// In case of cubic, we shift sample -1, and take 3 steps,
 	/// None and linear require 2 steps and sample == current == $F-1.
 	/// Delta will be used to drive interpolants (0,1). 
-	float sample = (!interpol) ? (frame-1) : (frame-1) * (1.0/pc2->header->sampleRate);
-	float delta  = sample - SYSfloor(sample);
+	float sample    = (!interpol) ? (frame-1) : (frame-1) * (1.0/pc2->header->sampleRate);
+	fpreal32 delta  = sample - SYSfloor(sample);
 	sample       = SYSfloor(sample);
 	
 	/// We also create a single spline object.
@@ -309,6 +309,8 @@ SOP_PointCache::cookMySop(OP_Context &context)
                 spline->setValue(2, v2, 3);
                 
                 /// Finally eval. spline and assign result to vector
+                /// Delta needs to be remapped:
+                delta = SYSfit(delta, 0.0f, 1.0f, 0.5f, 1.0f);
                 spline->evaluate(delta, pp, 3, (UT_ColorType)2);
                 p.assign(pp[0], pp[1], pp[2], 1.0);
             }
