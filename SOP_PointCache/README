@@ -2,11 +2,9 @@ PointCache is a Houini SOP operator for applying point
 deformations stored in popular PC2 format described here:
 http://www.footools.com/plugins/docs/PointCache2_README.html
 
-It supports groups, and it's about x40 faster from Python OTLs.
-It currently doesn't support interpolation though, 
-so if you need one (and sampleRate < 1 in a file), 
-append TimeBlendSOP and TimeWrapSOP for retiming: 
-output_range = input_range*sampleRange,  
+It supports point groups, and it's about x40 faster from Python OTLs.
+It also interpolates points' positions lineary or cubicly and 
+recomputes normals after deformation applied.
 
 To install, as usual, source Houdini's environment:
 
