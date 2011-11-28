@@ -39,8 +39,9 @@ newSopOperator(OP_OperatorTable *table)
 }
 
 static PRM_Name names[] = {
-    PRM_Name("filename",	"PC2 File"),
-    PRM_Name("interpol",    "Interpolation"),
+    PRM_Name("filename",	   "PC2 File"),
+    PRM_Name("interpol",       "Interpolation"),
+    PRM_Name("computeNormals", "Compute Normals"),
 };
 
 
@@ -59,6 +60,7 @@ SOP_PointCache::myTemplateList[] = {
     PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu),
     PRM_Template(PRM_FILE,	1, &names[0], PRMoneDefaults, 0),
     PRM_Template(PRM_ORD, 1, &names[1], 0, &interpolMenu),
+    PRM_Template(PRM_TOGGLE, 1, &names[2]),
     PRM_Template(),
 };
 
@@ -140,6 +142,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     UT_String filename;
     UT_String interpol_str;
     int interpol;
+    int computeNormals;
     UT_Spline *spline = NULL;
     /// Info buffers
     char info_buff[200];
@@ -163,6 +166,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     t = context.getTime();
     FILENAME(filename, t);
     interpol = INTERPOL(interpol_str, t);
+    computeNormals = COMPUTENORMALS(t);
     
     /// We need to keep track of that 
     /// in case user changes setting:
@@ -243,7 +247,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	/// Delta will be used to drive interpolants (0,1). 
 	float sample    = (!interpol) ? (frame-1) : (frame-1) * (1.0/pc2->header->sampleRate);
 	fpreal32 delta  = sample - SYSfloor(sample);
-	sample       = SYSfloor(sample);
+	sample          = SYSfloor(sample);
 	
 	/// We also create a single spline object.
 	if (interpol == PC2_CUBIC)
@@ -253,6 +257,8 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	    spline = new UT_Spline(); 
         spline->setGlobalBasis(UT_SPLINE_CATMULL_ROM);
         spline->setSize(3, 3);
+        /// Delta needs to be remapped:
+        delta = SYSfit(delta, 0.0f, 1.0f, 0.5f, 1.0f);
 	}
 	
 	/// Don't deceive user if no supersamples found in a file:
@@ -293,7 +299,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
             }
             else if (interpol == PC2_CUBIC)
             {
-                fpreal32 pp[] = {0.0, 0.0, 0.0};
+                fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
                 fpreal32 v0[] = {points[3*ptnum], 
                                  points[3*ptnum+1], 
                                  points[3*ptnum+2]};
@@ -309,21 +315,23 @@ SOP_PointCache::cookMySop(OP_Context &context)
                 spline->setValue(2, v2, 3);
                 
                 /// Finally eval. spline and assign result to vector
-                /// Delta needs to be remapped:
-                delta = SYSfit(delta, 0.0f, 1.0f, 0.5f, 1.0f);
                 spline->evaluate(delta, pp, 3, (UT_ColorType)2);
                 p.assign(pp[0], pp[1], pp[2], 1.0);
             }
             ppt->getPos() = p;
             ptnum++;
             
-            /// We really shouln't go over this boundary...
+            /// We really shouldn't go over this boundary...
             ptnum = SYSclamp(ptnum, 0, numPoints-1);
 	    }
 	   
     }
     
-    // Notify the display cache that we have directly edited
+    ///Update normals:
+    if (computeNormals)
+        GB_AttributeRef ref = gdp->normal();
+    
+    /// Notify the display cache that we have directly edited
     gdp->notifyCache(GU_CACHE_ALL);
     if (spline) 
         delete spline;

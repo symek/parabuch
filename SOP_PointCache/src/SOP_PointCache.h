@@ -74,6 +74,7 @@ protected:
 private:
     void	getGroups(UT_String &str){ evalString(str, "group", 0, 0); }
     void    FILENAME(UT_String &str, float t){ return evalString(str, "filename", 0, t);}
+    int     COMPUTENORMALS(float t) {return evalInt("computeNormals", 0, t);}
     int     INTERPOL(UT_String &str, float t)
             {   
                 evalString(str, "interpol", 0, t);
