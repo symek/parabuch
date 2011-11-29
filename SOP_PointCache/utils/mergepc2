@@ -1,0 +1,118 @@
+#!/usr/bin/python
+import os
+import sys
+import struct
+
+def parseObj(ginfo):
+    """Parses obj using $HB/ginfo"""
+
+    info = {}
+    groups = {}
+    dash = 0
+    segments = []
+
+    # Strip spaces and empty lines:
+    ginfo = [line.strip() for line in ginfo if len(line) > 0]
+    for line in ginfo[:4]:
+        info[line.split()[1]] = int(line.split()[0])
+
+    # Find groups
+    for line in range(len(ginfo)):
+        if ginfo[line].startswith("______"):
+            segments.append(line)
+            dash += 1
+            
+
+    for line in ginfo[segments[0]+2: segments[1]]:
+        groups[line.split()[-1]] = line.split()[0]
+
+    info['prim_groups'] = groups
+    return info
+
+
+def getHeaders(pc2s):
+    """Reads headers from a sequence of pc2 files."""
+    h = {}
+    headers = {}
+    for key in pc2s.keys():
+        file = open(pc2s[key], 'rb')
+        sig  = struct.unpack('12c', file.read(12))
+        fileVersion, numPoints, startFrame, sampleRate, numSamples = struct.unpack('iiffi', file.read(20))
+        file.close()
+        h['magic']       = "".join(sig)
+        h['fileVersion'] = fileVersion
+        h['numPoints']   = numPoints 
+        h['startFrame']  = startFrame
+        h['sampleRate']  = sampleRate
+        h['numSamples']  = numSamples
+        headers[key] = h
+    return headers
+
+
+def main():
+
+    obj = sys.argv[1]
+    pc2 = sys.argv[2:-1]
+    out = sys.argv[-1]
+
+    # Parse provided obj:
+    hb    = os.getenv("HB", "/opt/package/houdini_11.1.118")
+    ginfo = os.popen("%s %s" % (os.path.join(hb, "ginfo"), obj)).readlines()
+    groups = parseObj(ginfo)
+
+    # Build dict {group:file}
+    pc2s = {}
+    for f in pc2:
+        pc2s[f.split(".")[-2]] = f
+
+    # Read in headers:
+    headers = getHeaders(pc2s)
+    #print headers
+
+    # Construct new header
+    # TODO: we should check if all headers are the same:
+    magic   = headers[headers.keys()[0]]['magic']
+    samples = headers[headers.keys()[0]]['numSamples']
+    points  = headers[headers.keys()[0]]['numPoints']
+    rate    = headers[headers.keys()[0]]['sampleRate']
+    start   = headers[headers.keys()[0]]['startFrame']
+    
+    # We can't rely on points num from pc2:
+    numPoints = groups['Points']
+
+    #print  points, start, rate, samples
+    newHeader = struct.pack("12ciiffi", 'P','O','I','N','T','C','A','C','H','E','2','\x00', 1, numPoints, start, rate, samples)
+    
+    # Write down a header:
+    PC = open(out, "wb")
+    PC.write(newHeader)
+    PC.close()
+    
+    # Reopen output & seek to skip a header: 
+    PC = open(out, "ab+")
+    PC.seek(32)  
+    
+    print "Progress: ",
+    # Iterate over samples:
+    for sample in range(samples):
+        offset = points*3*4 * sample
+        size   = points*3
+        format = "%sf" % size
+        # Interate over files:
+        for file in pc2s.keys():
+            f = open(pc2s[file], 'rb')
+            f.seek(32+offset)
+            floats = struct.unpack(format, f.read(size*4))
+            for fx in floats:
+                #PC.seek(0, 2)
+                PC.write(struct.pack('f', fx))
+            f.close()
+        if (sample%10 == 0): 
+            print (sample*1.0/samples),
+    PC.close()
+
+
+
+
+if __name__ == "__main__": main()
+
