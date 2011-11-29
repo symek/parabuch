@@ -42,6 +42,7 @@ static PRM_Name names[] = {
     PRM_Name("filename",	   "PC2 File"),
     PRM_Name("interpol",       "Interpolation"),
     PRM_Name("computeNormals", "Compute Normals"),
+    PRM_Name("pGroup",       "Primitive Group"),
 };
 
 
@@ -57,6 +58,7 @@ static PRM_ChoiceList  interpolMenu(PRM_CHOICELIST_SINGLE, interpolChoices);
 
 PRM_Template
 SOP_PointCache::myTemplateList[] = {
+    PRM_Template(PRM_STRING, 1, &names[3], 0, &SOP_Node::groupMenu),
     PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu),
     PRM_Template(PRM_FILE,	1, &names[0], PRMoneDefaults, 0),
     PRM_Template(PRM_ORD, 1, &names[1], 0, &interpolMenu),
@@ -141,12 +143,14 @@ SOP_PointCache::cookMySop(OP_Context &context)
  
     UT_String filename;
     UT_String interpol_str;
-    int interpol;
-    int computeNormals;
+    UT_String pGroup;
+    int       interpol;
+    int       computeNormals;
     UT_Spline *spline = NULL;
     /// Info buffers
-    char info_buff[200];
+    char     info_buff[200];
     const char *info;
+    
     /// Flag to indicate new point
     /// array needs to be allocated
     bool reallocate = false;
@@ -160,12 +164,21 @@ SOP_PointCache::cookMySop(OP_Context &context)
    
     /// Duplicate our incoming geometry 
     duplicatePointSource(0, context);
-    
+    //duplicateSource(0, context);
     /// Eval parms. 
     /// FIXME: interpol!!! (str or int menu?)
     t = context.getTime();
     FILENAME(filename, t);
-    interpol = INTERPOL(interpol_str, t);
+    PGROUP  (pGroup);
+    
+    /// We try to figure out what group we have here:
+    //cout << pGroup.buffer() << endl;
+    const GB_BaseGroup *baseGroup;
+    baseGroup = parseAllGroups(pGroup.buffer(), gdp);
+    //if (baseGroup)
+    //    cout << (int)baseGroup->classType() << endl;
+    
+    interpol       = INTERPOL(interpol_str, t);
     computeNormals = COMPUTENORMALS(t);
     
     /// We need to keep track of that 

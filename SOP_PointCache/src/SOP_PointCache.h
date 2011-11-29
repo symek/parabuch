@@ -17,6 +17,7 @@ struct PC2Header
 	int numSamples;
 };
 
+/// Interpolation types
 enum PC2_Interpol_Type
 {
     PC2_NONE,
@@ -24,6 +25,7 @@ enum PC2_Interpol_Type
     PC2_CUBIC,
 };
 
+/// PC2 handler class
 class PC2_File
 {
 public: 
@@ -54,7 +56,7 @@ private:
     UT_String  *filename;
 };
 
-
+/// Main class it was modeled after SOP_PointWave example from HDK.
 class SOP_PointCache : public SOP_Node
 {
 public:
@@ -63,9 +65,7 @@ public:
 
     static PRM_Template  myTemplateList[];
     static OP_Node		*myConstructor(OP_Network*, const char *, OP_Operator *);
-   
     virtual OP_ERROR     cookInputGroups(OP_Context &context, int alone = 0);
-            OP_ERROR     openPC2File(UT_String filename, float t);
 
 protected:
     /// Method to cook geometry for the SOP
@@ -73,8 +73,11 @@ protected:
 
 private:
     void	getGroups(UT_String &str){ evalString(str, "group", 0, 0); }
+    void    PGROUP(UT_String &str)   { evalString(str, "pGroup", 0, 0); }
     void    FILENAME(UT_String &str, float t){ return evalString(str, "filename", 0, t);}
     int     COMPUTENORMALS(float t) {return evalInt("computeNormals", 0, t);}
+    
+    /// I don't know how to make int based list...
     int     INTERPOL(UT_String &str, float t)
             {   
                 evalString(str, "interpol", 0, t);
