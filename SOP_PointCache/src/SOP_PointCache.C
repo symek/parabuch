@@ -42,7 +42,8 @@ static PRM_Name names[] = {
     PRM_Name("filename",	   "PC2 File"),
     PRM_Name("interpol",       "Interpolation"),
     PRM_Name("computeNormals", "Compute Normals"),
-    PRM_Name("pGroup",       "Primitive Group"),
+    PRM_Name("pGroup",           "Primitive Group"),
+    PRM_Name("flip",            "Flip Space"),
 };
 
 
@@ -58,11 +59,12 @@ static PRM_ChoiceList  interpolMenu(PRM_CHOICELIST_SINGLE, interpolChoices);
 
 PRM_Template
 SOP_PointCache::myTemplateList[] = {
-    PRM_Template(PRM_STRING, 1, &names[3], 0, &SOP_Node::groupMenu),
+    //PRM_Template(PRM_STRING, 1, &names[3], 0, &SOP_Node::groupMenu),
     PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu),
     PRM_Template(PRM_FILE,	1, &names[0], PRMoneDefaults, 0),
     PRM_Template(PRM_ORD, 1, &names[1], 0, &interpolMenu),
     PRM_Template(PRM_TOGGLE, 1, &names[2]),
+    PRM_Template(PRM_TOGGLE, 1, &names[4]),
     PRM_Template(),
 };
 
@@ -143,8 +145,9 @@ SOP_PointCache::cookMySop(OP_Context &context)
  
     UT_String filename;
     UT_String interpol_str;
-    UT_String pGroup;
+    //UT_String pGroup;
     int       interpol;
+    int       flip;
     int       computeNormals;
     UT_Spline *spline = NULL;
     /// Info buffers
@@ -169,12 +172,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// FIXME: interpol!!! (str or int menu?)
     t = context.getTime();
     FILENAME(filename, t);
-    PGROUP  (pGroup);
+    //PGROUP  (pGroup);
+    flip = FLIP(t);
     
     /// We try to figure out what group we have here:
     //cout << pGroup.buffer() << endl;
-    const GB_BaseGroup *baseGroup;
-    baseGroup = parseAllGroups(pGroup.buffer(), gdp);
+    //const GB_BaseGroup *baseGroup;
+    //baseGroup = parseAllGroups(pGroup.buffer(), gdp);
     //if (baseGroup)
     //    cout << (int)baseGroup->classType() << endl;
     
@@ -331,6 +335,15 @@ SOP_PointCache::cookMySop(OP_Context &context)
                 spline->evaluate(delta, pp, 3, (UT_ColorType)2);
                 p.assign(pp[0], pp[1], pp[2], 1.0);
             }
+            /// Flip space for Max compatibile: x, z,-y.
+            if (flip)
+            {
+                float z;
+                z     = p.z();
+                p.z() = -p.y();
+                p.y() = z;
+            }
+            
             ppt->getPos() = p;
             ptnum++;
             

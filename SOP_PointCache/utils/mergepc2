@@ -2,12 +2,14 @@
 import os
 import sys
 import struct
+import time
 
 def parseObj(ginfo):
     """Parses obj using $HB/ginfo"""
 
     info = {}
     groups = {}
+    group_list = []
     dash = 0
     segments = []
 
@@ -24,17 +26,20 @@ def parseObj(ginfo):
             
 
     for line in ginfo[segments[0]+2: segments[1]]:
+        group_list.append(line.split()[-1])
         groups[line.split()[-1]] = line.split()[0]
 
     info['prim_groups'] = groups
+    # We need this to maintain order:
+    info['group_list'] = group_list
     return info
 
 
 def getHeaders(pc2s):
-    """Reads headers from a sequence of pc2 files."""
-    h = {}
+    """Reads headers from a sequence of pc2 files."""  
     headers = {}
     for key in pc2s.keys():
+        h = {}
         file = open(pc2s[key], 'rb')
         sig  = struct.unpack('12c', file.read(12))
         fileVersion, numPoints, startFrame, sampleRate, numSamples = struct.unpack('iiffi', file.read(20))
@@ -51,6 +56,12 @@ def getHeaders(pc2s):
 
 def main():
 
+    if len(sys.argv) < 4:
+        print "Usage:"
+        print "\tmergepc2 object.obj objects_parts.*.pc2 object.pc2\n"
+        print "\tProcess takes approx. 30sec for 20 groups = 12K points in total."
+        sys.exit()
+
     obj = sys.argv[1]
     pc2 = sys.argv[2:-1]
     out = sys.argv[-1]
@@ -58,7 +69,7 @@ def main():
     # Parse provided obj:
     hb    = os.getenv("HB", "/opt/package/houdini_11.1.118")
     ginfo = os.popen("%s %s" % (os.path.join(hb, "ginfo"), obj)).readlines()
-    groups = parseObj(ginfo)
+    detail = parseObj(ginfo)
 
     # Build dict {group:file}
     pc2s = {}
@@ -78,10 +89,11 @@ def main():
     start   = headers[headers.keys()[0]]['startFrame']
     
     # We can't rely on points num from pc2:
-    numPoints = groups['Points']
+    numPoints = detail['Points']
 
-    #print  points, start, rate, samples
-    newHeader = struct.pack("12ciiffi", 'P','O','I','N','T','C','A','C','H','E','2','\x00', 1, numPoints, start, rate, samples)
+    #print  pointsu, start, rate, samples
+    newHeader = struct.pack("12ciiffi", 'P','O','I','N','T','C','A','C','H','E','2','\x00', \
+                            1, numPoints, start, rate, samples)
     
     # Write down a header:
     PC = open(out, "wb")
@@ -91,26 +103,37 @@ def main():
     # Reopen output & seek to skip a header: 
     PC = open(out, "ab+")
     PC.seek(32)  
-    
-    print "Progress: ",
+        
+
+    #Print details.
+    #TODO: make progress working (with subprocess?)
+    print "Details: "
+    print "Obj: %s,\n pc2: %s, \n output: %s " % (obj, pc2, out)
+
+    # Start counting...
+    time.clock()
     # Iterate over samples:
     for sample in range(samples):
-        offset = points*3*4 * sample
-        size   = points*3
-        format = "%sf" % size
-        # Interate over files:
-        for file in pc2s.keys():
-            f = open(pc2s[file], 'rb')
+        #print sample,
+        for group in detail['group_list']:
+            file = pc2s[group[:-1]]
+            points = headers[group[:-1]]['numPoints']
+            offset = points*3*4*sample
+            size   = points*3
+            format = "%sf" % size
+            f = open(file, 'rb')
             f.seek(32+offset)
-            floats = struct.unpack(format, f.read(size*4))
-            for fx in floats:
-                #PC.seek(0, 2)
-                PC.write(struct.pack('f', fx))
+            try:
+                floats = struct.unpack(format, f.read(size*4))
+                for fx in floats:
+                    PC.write(struct.pack('f', fx))
+            except:
+                print "Can't deal with %s at %s sample. Exit now." % (file, sample)
+                sys.exit()
+            
             f.close()
-        if (sample%10 == 0): 
-            print (sample*1.0/samples),
     PC.close()
-
+    print "Process took: %s" % time.clock()
 
 
 
