@@ -4,6 +4,27 @@ import sys
 import struct
 import time
 
+
+def parseObj2(ginfo):
+    info = {}
+    group_list = []
+    Points = 0
+    ginfo = [line.strip() for line in ginfo]
+
+    for line in ginfo:
+        if line.startswith("v "):
+            Points += 1
+        if line.startswith("g "):
+            group = line.split(" ")[1]
+            # underscore is needed because H. sees new line at the end of obj_group as _
+            group_list.append(group+"_")
+        
+    info['group_list'] = group_list
+    info['Points']     = Points
+
+    return info
+
+
 def parseObj(ginfo):
     """Parses obj using $HB/ginfo"""
 
@@ -59,7 +80,7 @@ def main():
     if len(sys.argv) < 4:
         print "Usage:"
         print "\tmergepc2 object.obj objects_parts.*.pc2 object.pc2\n"
-        print "\tProcess takes approx. 30sec for 20 groups = 12K points in total."
+        print "\tProcess takes approx. 5sec. for 20 groups = 12K points in total."
         sys.exit()
 
     obj = sys.argv[1]
@@ -67,14 +88,18 @@ def main():
     out = sys.argv[-1]
 
     # Parse provided obj:
-    hb    = os.getenv("HB", "/opt/package/houdini_11.1.118")
-    ginfo = os.popen("%s %s" % (os.path.join(hb, "ginfo"), obj)).readlines()
-    detail = parseObj(ginfo)
+    #hb    = os.getenv("HB", "/opt/package/houdini_11.1.118")
+    #ginfo = os.popen("%s %s" % (os.path.join(hb, "ginfo"), obj)).readlines()
+    ginfo  = open(obj, 'r').readlines()
+    detail = parseObj2(ginfo)
+    #print detail
 
     # Build dict {group:file}
     pc2s = {}
     for f in pc2:
-        pc2s[f.split(".")[-2]] = f
+        #group_name = os.path.splitext(f)[0]
+        group_name = f.split(".")[-2]
+        pc2s[group_name+"_"] = f
 
     # Read in headers:
     headers = getHeaders(pc2s)
@@ -109,6 +134,8 @@ def main():
     #TODO: make progress working (with subprocess?)
     print "Details: "
     print "Obj: %s,\n pc2: %s, \n output: %s " % (obj, pc2, out)
+    print detail
+    print pc2s
 
     # Start counting...
     time.clock()
@@ -116,8 +143,8 @@ def main():
     for sample in range(samples):
         #print sample,
         for group in detail['group_list']:
-            file = pc2s[group[:-1]]
-            points = headers[group[:-1]]['numPoints']
+            file = pc2s[group]
+            points = headers[group]['numPoints']
             offset = points*3*4*sample
             size   = points*3
             format = "%sf" % size
@@ -125,8 +152,7 @@ def main():
             f.seek(32+offset)
             try:
                 floats = struct.unpack(format, f.read(size*4))
-                for fx in floats:
-                    PC.write(struct.pack('f', fx))
+                PC.write(struct.pack('%sf' % len(floats), *floats))
             except:
                 print "Can't deal with %s at %s sample. Exit now." % (file, sample)
                 sys.exit()
