@@ -112,8 +112,8 @@ PC2_File::loadFile(UT_String *file)
 	if ((UT_String("POINTCACHE2").hash() == UT_String(header->magic).hash()) \
 	                 && (header->version == 1))
 	{
+	    loaded = 1;
         return 1;
-        loaded = 1;
 	}
 	return 0;
 }
@@ -167,23 +167,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
    
     /// Duplicate our incoming geometry 
     duplicatePointSource(0, context);
-    //duplicateSource(0, context);
     /// Eval parms. 
     /// FIXME: interpol!!! (str or int menu?)
-    t = context.getTime();
-    FILENAME(filename, t);
-    //PGROUP  (pGroup);
-    flip = FLIP(t);
-    
-    /// We try to figure out what group we have here:
-    //cout << pGroup.buffer() << endl;
-    //const GB_BaseGroup *baseGroup;
-    //baseGroup = parseAllGroups(pGroup.buffer(), gdp);
-    //if (baseGroup)
-    //    cout << (int)baseGroup->classType() << endl;
-    
+    t              = context.getTime();
+    flip           = FLIP(t);
     interpol       = INTERPOL(interpol_str, t);
     computeNormals = COMPUTENORMALS(t);
+    FILENAME(filename, t);
     
     /// We need to keep track of that 
     /// in case user changes setting:
@@ -222,9 +212,10 @@ SOP_PointCache::cookMySop(OP_Context &context)
     }
    
 	/// Lets give an user some information:
-	sprintf(info_buff,"File   : %s \nPoints : %d \nStart  : %f \nRate   : %f \nSamples: %d", 
+	sprintf(info_buff, "File   : %s \nPoints : %d \nStart  : %f \nRate   : %f \nSamples: %d\nFrames: %f",
 	            filename.buffer(),  pc2->header->numPoints, pc2->header->startFrame, 
-	            pc2->header->sampleRate, pc2->header->numSamples);
+	            pc2->header->sampleRate, pc2->header->numSamples, 
+	            pc2->header->sampleRate * pc2->header->numSamples );
 	                       
 	/// Is it ugly?
 	info = &info_buff[0];
@@ -278,9 +269,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
         delta = SYSfit(delta, 0.0f, 1.0f, 0.5f, 1.0f);
 	}
 	
-	/// Don't deceive user if no supersamples found in a file:
+	/// Don't deceive an user if no supersamples found in a file:
 	if (interpol && pc2->header->sampleRate==1.0)
-	    addWarning(SOP_MESSAGE, "Sample rate is 1.0, so interpolation will NOT be correct.");
+	    addWarning(SOP_MESSAGE, "Sample rate is 1.0, interpolation will be poor.");
+	    
+	/// Having interpolation turned off and samples rate < 1.0 doesn't play nice eihter:
+	if (!interpol && pc2->header->sampleRate<1.0)
+	    addWarning(SOP_MESSAGE, "No interpolation selected. Supersampling will cause animation longer (frames == samples)");
 	
     /// Load array at 'sample', 'steps' wide, to 'points' array 
     if (!pc2->getPArray((int) sample, steps, points))
