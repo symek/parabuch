@@ -75,8 +75,9 @@ private:
     void	getGroups(UT_String &str){ evalString(str, "group", 0, 0); }
     void    PGROUP(UT_String &str)   { evalString(str, "pGroup", 0, 0); }
     void    FILENAME(UT_String &str, float t){ return evalString(str, "filename", 0, t);}
-    int     COMPUTENORMALS(float t) {return evalInt("computeNormals", 0, t);}
-    int     FLIP(float t) {return evalInt("flip", 0, t);}
+    int     COMPUTENORMALS(float t) { return evalInt("computeNormals", 0, t);}
+    int     FLIP(float t)           { return evalInt("flip", 0, t);}
+     int    ADDREST(float t)        { return evalInt("addrest", 0, t);}
     
     /// I don't know how to make int based list...
     int     INTERPOL(UT_String &str, float t)

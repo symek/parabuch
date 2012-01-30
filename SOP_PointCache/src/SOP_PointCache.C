@@ -44,6 +44,7 @@ static PRM_Name names[] = {
     PRM_Name("computeNormals", "Compute Normals"),
     PRM_Name("pGroup",           "Primitive Group"),
     PRM_Name("flip",            "Flip Space"),
+    PRM_Name("addrest",          "Add Rest"),
 };
 
 
@@ -59,12 +60,12 @@ static PRM_ChoiceList  interpolMenu(PRM_CHOICELIST_SINGLE, interpolChoices);
 
 PRM_Template
 SOP_PointCache::myTemplateList[] = {
-    //PRM_Template(PRM_STRING, 1, &names[3], 0, &SOP_Node::groupMenu),
     PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu),
     PRM_Template(PRM_FILE,	1, &names[0], PRMoneDefaults, 0),
     PRM_Template(PRM_ORD, 1, &names[1], 0, &interpolMenu),
     PRM_Template(PRM_TOGGLE, 1, &names[2]),
     PRM_Template(PRM_TOGGLE, 1, &names[4]),
+    PRM_Template(PRM_TOGGLE, 1, &names[5]),
     PRM_Template(),
 };
 
@@ -148,6 +149,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     //UT_String pGroup;
     int       interpol;
     int       flip;
+    int       addrest;
     int       computeNormals;
     UT_Spline *spline = NULL;
     /// Info buffers
@@ -171,6 +173,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// FIXME: interpol!!! (str or int menu?)
     t              = context.getTime();
     flip           = FLIP(t);
+    addrest        = ADDREST(t);
     interpol       = INTERPOL(interpol_str, t);
     computeNormals = COMPUTENORMALS(t);
     FILENAME(filename, t);
@@ -187,6 +190,30 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Get frame. FIXME: This should be probably provided
     /// by an user.
     float frame = (float) context.getFloatFrame();
+    
+    /// Create 'rest' attribute if requested:
+    if (addrest)
+    {
+        GB_AttributeRef restattr = gdp->addRestAttribute(GEO_POINT_DICT);
+
+        GEO_AttributeHandle  Phandle;
+        GEO_AttributeHandle  Rhandle;
+        UT_Vector4           Pvalue; 
+        
+        Phandle = gdp->getAttribute(GEO_POINT_DICT, "P");
+        Rhandle = gdp->getAttribute(GEO_POINT_DICT, "rest");
+        
+        if (Phandle.isAttributeValid() && Rhandle.isAttributeValid())
+        {
+            for (int i = 0; i < gdp->points().entries(); i++)
+            {
+                Phandle.setElement(gdp->points()(i));
+                Rhandle.setElement(gdp->points()(i));
+                Pvalue = Phandle.getV4();
+                Rhandle.setV4(Pvalue);
+            }
+        }
+     }
     
     /// Create pc2 file object only once:
     if (!pc2) 
