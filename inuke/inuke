@@ -1,0 +1,407 @@
+#!/usr/bin/python
+# -*- coding: iso-8859-1 -*-
+
+import sys, os
+import time
+import shutil
+try:
+    import ha.utils
+except:
+    pass
+#from ha.utils import getJobId
+from optparse import OptionParser
+
+import nodes_help
+
+
+image_formats = ('.exr', '.tif', '.tiff', '.tga', 
+				 '.jpg', '.pic', '.png', '.rgb')
+
+Default_Node_Knobs = {'Gamma':['value', 'mix'],
+					  'Reformat':['type','scale'], 
+					  'Log2Lin':['operation'], 
+					  'Crop':['box','box','box','box'],
+					  'Grade':['gain','multipy','offset','gamma'],
+					  'Transform':['translate','translate','rotate','scale','scale'],
+					  'Blur':['size', 'size'],
+					  'Reformat':['type','scale','black_outside'],
+					  'Merge':['operation','0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15'],
+					  'Remove':['operation','channels'],
+					  'Invert':['mix','channels','unpremult'],
+					  'Read':['file','first','last',],
+					  'Write':['file','channels','colorspace'],
+					  'globals':["first_frame",'last_frame','fps'],
+					  'Root':["first_frame","last_frame", 'fps']}
+
+
+def parseOptions():
+	usage = "usage: %prog [options] arg"
+	parser = OptionParser(usage)
+	# Nodes:
+	parser.add_option("", "--Gamma", dest="Gamma",  action="store", type="string", help=nodes_help.Gamma)
+	parser.add_option("", "--Crop", dest="Crop",  action="store", type="string", help=nodes_help.Crop)
+	parser.add_option("", "--Reformat", dest="Reformat",  action="store", type="string", help=nodes_help.Reformat)
+	parser.add_option("", "--ColorCorrect", dest="ColorCorrect",  action="store",  help=nodes_help.ColorCorrect)
+	parser.add_option("", "--Grade", dest="Grade",  action="store",  help=nodes_help.Grade)
+	parser.add_option("", "--Merge", dest="Merge",  action="store",  help=nodes_help.Merge)
+	parser.add_option("", "--Log2Lin", dest="Log2Lin",  action="store",  help=nodes_help.Log2Lin)
+	parser.add_option("", "--Blur", dest="Blur",  action="store",  help=nodes_help.Blur)
+	parser.add_option("", "--Transform", dest="Transform",  action="store",  help=nodes_help.Transform)
+	parser.add_option("", "--Invert", dest="Invert",  action="store",  help=nodes_help.default)
+	parser.add_option("", "--Remove", dest="Remove",  action="store",  help=nodes_help.default)
+	parser.add_option("", "--Read", dest="Read",  action="store",  help=nodes_help.default)
+	parser.add_option("", "--Write", dest="Write",  action="store",  help=nodes_help.default)
+	parser.add_option("", "--HA_Flicker", dest="HA_Flicker",  action="store",  help=nodes_help.default)
+	
+	# Globals 
+	parser.add_option("", "--globals", dest="globals",  action="store",  help='Set globals in Nuke: -x start,end,fps')
+	parser.add_option("", "--hold", dest="hold",  action="store",  help='Set SGE job ID to hold current work.')
+	parser.add_option("", "--slots", dest="slots",  action="store", default=25, type="int", \
+	help='Set SGE job slots (use "--slots 1" to encode mpegs).')
+	parser.add_option("", "--id", dest="sgeid",  action="store",  help='Set SGE job ID for current work.')
+	
+	#Options:
+	parser.add_option("-i", "", dest="single",  action="store_true",  help="Render single frame.")
+	parser.add_option("-v", "", dest="nukev",  action="store_true",  help="Open render in Nuke's viewer. See also -m")
+	parser.add_option("-m", "", dest="mplay",  action="store_true",  help="Open render in mplay. See also -v")
+	parser.add_option("-s", "", dest="sge",  action="store_true",  help="Send render to farm using local license.")
+	parser.add_option("-r", "", dest="render",  action="store_true",  help="Render locally.")
+	parser.add_option("-f", "", dest="exec_farm",  action="store_true",  help="Execute everything on farm (Also job submiting).")
+	parser.add_option("-d", "", dest="debug",  action="store_true",  help="Debug. (Logging facility wip")
+	parser.add_option("-c", "", dest="child_process",  action="store_true",  help="Used internally to spawn Nuke's process as child.")
+	parser.add_option("-u", dest="update_plugins",  action="store_true",  default=True, \
+	help='Updates plugins menu in Nuke (default True)')
+	
+	
+	(opts, args) = parser.parse_args(sys.argv[1:])
+	return opts, args, parser
+
+
+class Options(object):
+	"""Parses command line so it keep order of options and arguments.
+		TODO: Make it agnostic, no relation to an application used later on."""
+	def __init__(self, options=None):
+		self.options = options
+		self.names = list("ABCDEFGHIJKLMNOPRSTWYZ")
+		self.reads = list("ABCDEFGHIJKLMNOPRSTWYZ")
+		self.nodes = {}
+
+		# This counts nodes 
+		# already created: 
+		self._counter = 0
+		
+		# May or may not be initialized:
+		if self.options:
+		  self.buildNodes()
+		  self.buildKnobs()
+
+	def buildNodes(self):
+		""" This is a recursive function dealing with a first option in a line,
+			after which it call its self until there is no option left."""
+
+		if not self.options: return 
+		item = self.options[0]
+		# This is NODE option:
+		if item.startswith("--") and item[2].isupper():
+			self.nodes[self._counter] = {item[2:]: self.options[1]}
+			self.options = self.options[2:]
+		# This is global option with value:
+		elif item.startswith("--") and item[2].islower():
+			# We assume for now that '-' means script setting, not Nuke's node, so we skip it here: FIX IT!
+			#self.nodes[self.counter] = {item[1:]: True} #<--- Skipping!
+			self.options = self.options[2:]
+		# This is global option without a value:
+		elif item.startswith("-") and item[1].islower():
+			self.options = self.options[1:]
+		else:
+			self.nodes[self._counter] = {self.names[0]: item}
+			self.names = self.names[1:]
+			self.options = self.options[1:]
+		self._counter += 1
+		self.buildNodes()
+
+
+	def buildKnobs(self):
+	  """Takes care about knobs dictonary"""
+	  # We assume the last node in a row is a Write node!:
+	  # (This is a short cut, as we can add a Write node with '--Write' command.)
+	  last = self.nodes[self.nodes.keys()[-1]].keys()[0]
+	  
+	  for index in self.nodes:
+		node = self.nodes[index]
+		if node.keys()[0] in self.reads:
+		  self.nodes[index] = self._processSequence(node[node.keys()[0]], node.keys()[0], last)
+		else:
+		  self.nodes[index] = self._processDictValues(node)
+
+
+	def _processDictValues(self, options):
+	  """ Builds Nuke's nodes knobs values."""
+	  for opt in options:
+		knobs = {}
+		if options[opt] and type(options[opt]) != type(True):
+		  if "=" in options[opt]:
+			options[opt] = options[opt].split(":")
+			for knob in options[opt]:
+			  [knob, value]  = knob.split("=")
+			  #if not value.isdigit(): 
+			  value = tuple(value.split(","))
+			  knobs[knob] = value
+			options[opt] = knobs
+		  else:
+			options[opt] = options[opt].split(',')
+			for index in range(len(options[opt])):
+			  knob = Default_Node_Knobs[opt][index]
+			  if not knob in knobs.keys():
+				knobs[knob] = [options[opt][index]]
+			  else:
+				knobs[knob].append(options[opt][index])
+			options[opt] = knobs
+	  return options
+
+	def _processSequence(self, file, index, out):
+	  """builds Read specific knobs values. TODO: process more fields."""
+	  read, first, last  = {}, 1, 100
+	  file = os.path.abspath(file)
+	  if index == out: _type = 'Write'
+	  else: 
+		_type = 'Read'
+		file, first, last = self._findSequence(file)
+	  file = {'file': [file], 'colorspace':['default'], 'name':[str(index)]}
+	  read = {_type: file}
+	  if _type == "Read":
+		read[_type]['first'] = [first]
+		read[_type]['last'] = [last]
+	  else:
+		#read[_type]['autocrop'] = [1]
+		read[_type]['channels'] = ['all']
+	  return read
+	   
+	
+	def _findSequence(self, file):
+	  """ This works on sequences finding first & last frames."""
+	  """ This was fixed 24.05.10 to use ha.path module..."""
+	  from ha import path
+	  from glob import glob
+	  # Try to support uncomplited file names. Nasty?:
+	  # $ ./beauty_v01 --Gamma 2.2(...) for: ./beauty_v01_symek.0001.exr --Gamma(...)
+	  # You cannot use wild cards in command line, because bash will expand it.
+	  if not os.path.isfile(file):
+	  	file = glob(file+"*")
+		if file: file = file[0]
+		else: return "",0,0
+	  # Defaults:
+	  first, last  = 1, 1
+	  # Find pattern and search for files with it:
+	  file_name    = path.padding(file, 'shell')[0]
+	  files        = sorted(glob(file_name)) 
+	  # If this is a sequence, format it accordingly:
+	  if len(files) > 1:
+	  	first       = path.padding(files[0])[1]
+		file, last  = path.padding(files[-1],'nuke')[:-2] 
+	  return file, first, last
+
+
+class Comp(object):
+  """ Builds Nuke's composition based on options."""
+  def __init__(self, options=None, settings=None, scene=""):
+	import nuke
+	self.nuke    = nuke
+	self.scene   = scene
+	self.out     = None
+	self.script  = None
+	self.options = options
+	self.nodes   = {}
+	self.settings = settings
+
+
+	# This keeps track of longest sequence used in composition
+	# Unless global setting is not specified, it will be used
+	# as rendering frame range (should be?).
+
+	self.max_frame_range = {'first':1,'last':1}
+	  
+	if self.options:
+	  self.buildTree()
+	  
+	if self.settings:
+	  self.setGlobalSettings(self.settings)
+	
+  def buildTree(self):
+	#from self.nuke import createNode
+
+	def _getKnobType(knob,value):
+	  """We deal here with values types (int, float, string)"""
+	  # FIX: This doesn't work correctly with Transform:translate knob among others! Why?
+	  pattern = type(knob.value())
+	  if   pattern == type(0):   value = int(value)
+	  elif pattern == type(0.0): value = float(value)
+	  elif pattern == type(""):  value = str(value)
+	  else:
+		pass
+		# There is something wrong here:
+		#print "Wrong knob value: %s, %s" % (knob.name(), value)
+		#return value
+	  return value
+
+	def _saveLongestRange(knob, value):
+	  if self.max_frame_range[knob] < value:
+	  	self.max_frame_range[knob] = value
+	  
+	#Create Reads:
+	for key in self.options:
+	  option = self.options[key]
+	  node =  self.nuke.createNode(option.keys()[0])
+	  inputs = 0
+	  self.nodes[key] = node
+	  knobs  =  option[option.keys()[0]]
+	  for knob in knobs:
+		# All knobs but merge's inputs:
+		if knob not in Default_Node_Knobs['Merge'][1:]:
+		  try:
+			#value = tuple([float(x) for x in knobs[knob]])
+			value = tuple([_getKnobType(node.knob(knob), x) for x in knobs[knob]])
+			if len(value) == 1: value = value[0]
+		  except:
+			value = knobs[knob][0]
+			value = _getKnobType(node.knob(knob), value)
+
+		  # Finally sets knob value:		  
+		  node.knob(knob).setValue(value) # <-- (Here it comes perhaps the most problematic line of a whole script!!!)
+
+		  # Save frame range to self.max_frame_range:
+		  if node.Class() == "Read" and knob in ("first","last"):
+		  	_saveLongestRange(knob, value) 
+		else:
+		  # This is Merge node's inputs:
+		  node.setInput(inputs, self.nodes[int(knobs[knob][0])])
+		  inputs += 1
+
+	
+  def iterable(self,item):
+	if "__iter__" in dir(item): return True
+	
+  def save(self):
+	self.nuke.scriptSaveAs(self.scene,1)
+	
+  def render(self, nodes=None, start=None, end=None):
+    if not start or not end:
+	start, end = int(self.nuke.root().knob('first_frame').value()), \
+	int(self.nuke.root().knob('last_frame').value())
+    if not nodes: nodes = self.nuke.selectedNodes()
+    elif type(nodes[0]) == type(""):
+	nodes = [self.nuke.root().node(node) for node in nodes]
+    self.nuke.render(nodes[0], start, end)
+	
+
+  def setGlobalSettings(self, settings):
+	root = self.nuke.root()
+	# FIX: This is mess!!!
+	# If --globals was used:
+	if  settings['globals']:
+	  opt = {'globals': settings['globals']}
+	  opt = Options()._processDictValues(opt)
+	  for knob in opt['globals']:
+		root.knob(knob).setValue(int(opt['globals'][knob][0]))
+	# else if it's not a single file render overwrite frame range:
+	elif not self.settings['single']:
+	  print "No globals set. Longest sequence: %s, %s" % \
+		(self.max_frame_range['first'], self.max_frame_range['last'])
+	  # Set frame range for a longest sequence:
+	  for key in self.max_frame_range.keys():
+		root.knob(key+"_frame").setValue(int( self.max_frame_range[key]))
+	  
+
+
+	
+def main():
+  # Parse settings:
+  opts, args, parser = parseOptions()
+  options = sys.argv[1:]
+  script  = '/STUDIO/scripts/icomp/icomp.py'
+  
+  # TODO: WYWALIC WSZYSTKIE REFERENCJE DO NUKE'A  POZA KLASA COMP!!!!
+
+  
+  # Without options print help and exits:
+  if not options:
+     print nodes_help.GENERAL
+     return 
+
+  
+  if not opts.child_process:
+    # This is a primary call determining 
+    # if execution will happen locally or remotely:
+    nuke = os.getenv("ICOMP_NUKE","nuke_6.0v4")
+    command = "need %s; nuke -t %s %s" % (nuke, script, " ".join(options))
+    if not opts.exec_farm: 
+	print "This will happen with local Nuke (takes a non-gui license)."
+	# Starts child process:
+	os.system(command + " -c")
+    else: 
+	print "This will submit job via qsub."
+	# Generate script for qsub (nie da sie inaczej?)
+	job = os.path.join(os.getenv("JOB"),'render/sungrid/jobScript', 'icomp_' \
+	+ ha.utils.getJobId() + '.bash')
+	jobscript = open(job, 'w')
+	jobscript.write(command + ' -s -c\n')
+	jobscript.close()
+	os.system("qsub -j y -N icomp_submit_%s -cwd -V -q nuke -l nuke_lic=1 -o $JOB/render/sungrid/log/ %s" \
+	% (ha.utils.getJobId(), job))
+	
+    # Exit after submision:
+    return
+    
+  # This is a work house icomp instance:
+  elif opts.child_process:
+    print "This is an execution process."
+    import nuke
+    import sgeRender
+    from ha import path
+    # Again parse it by hand (Why?: optparse doesn't keep order!
+    # I probably should abandom optparse at all...)
+    options = Options(options)
+
+    # Script Name:
+    from sgeRender import getJobId
+    script_name = os.path.join(os.getenv("JOB"),'render/sungrid/jobScript', \
+    'icomp_' + ha.utils.getJobId() + '.nk')
+    
+    # Update plugins menu (we need this to refer to custom gizmos in comp):
+    if opts.update_plugins:
+	print "Updating plugins menu... ",
+	print len(nuke.plugins(nuke.ALL | nuke.NODIR, "*."+nuke.PLUGIN_EXT, "*.ofx.bundle", "*.gizmo")),
+	print " plugins."
+	
+	
+    # Send it to Comp class:
+    comp = Comp(options.nodes, opts.__dict__, script_name)
+    comp.save()
+
+    # Start rendering. First on SGE:
+    if opts.sge:
+	# This should be fixed (no hard coded numbers)
+	scriptPath, jobID = sgeRender.sgeRenderSelected(opts.hold, opts.slots, opts.sgeid)
+	print jobID
+	return
+
+    # In case local rendering, find frame range:
+    elif opts.render: 
+	if not opts.single:
+	    start, end = int(nuke.root().knob('first_frame').value()),\
+	    int(nuke.root().knob('last_frame').value())
+	else:
+	    start, end = 1, 1
+	# Fire local render:
+	comp.render(None, start, end)
+	#nuke.render(nuke.selectedNodes()[0], start, end)
+
+	# See the file:
+	if opts.nukev or opts.mplay:
+	    file = nuke.selectedNodes()[0].knob("file").evaluate()
+	    if opts.nukev: os.popen("need nuke_6.0v4; Nuke6.0 -v %s" % file)
+	    else: os.popen("mplay %s" % ha.path.padding(file,'houdini'))
+	  
+ 
+
+if __name__ == '__main__': main()
