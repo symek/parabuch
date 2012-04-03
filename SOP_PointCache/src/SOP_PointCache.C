@@ -3,7 +3,8 @@
  * It meant to do it faster than existing Python implementation.
  * 
  * skk. 
- * - 
+ * 
+ * - H12 : 03-04-2012
  * - init: 25-11-2011
  *
  */
@@ -82,6 +83,7 @@ SOP_PointCache::SOP_PointCache(OP_Network *net, const char *name, OP_Operator *o
     pc2 = NULL;
     points = NULL;
     dointerpolate = NULL;
+    cout << "Hello" << endl;
 }
 
 SOP_PointCache::~SOP_PointCache() {delete points;}
@@ -194,26 +196,26 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Create 'rest' attribute if requested:
     if (addrest)
     {
-        GB_AttributeRef restattr = gdp->addRestAttribute(GEO_POINT_DICT);
+        GA_RWAttributeRef restattr = gdp->addRestAttribute(GEO_POINT_DICT);
 
-        GEO_AttributeHandle  Phandle;
-        GEO_AttributeHandle  Rhandle;
-        UT_Vector4           Pvalue; 
+        GA_ROPageHandleV3    Phandle(gdp->getP());
+        GA_RWPageHandleV3    Rhandle(gdp, GEO_POINT_DICT, "rest");
+        UT_Vector3           Pvalue; 
         
-        Phandle = gdp->getAttribute(GEO_POINT_DICT, "P");
-        Rhandle = gdp->getAttribute(GEO_POINT_DICT, "rest");
-        
-        if (Phandle.isAttributeValid() && Rhandle.isAttributeValid())
+        if (Phandle.isValid() && Rhandle.isValid())
         {
-            for (int i = 0; i < gdp->points().entries(); i++)
+            GA_Offset start, end;
+            for (GA_Iterator it(gdp->getPointRange()); it.blockAdvance(start, end);)
             {
-                Phandle.setElement(gdp->points()(i));
-                Rhandle.setElement(gdp->points()(i));
-                Pvalue = Phandle.getV4();
-                Rhandle.setV4(Pvalue);
+                Phandle.setPage(start);
+                Rhandle.setPage(start);
+                for (GA_Offset pt = start; pt < end; ++pt)
+                {
+                    Rhandle.value(pt) = Phandle.get(pt);
+                }
             }
-        }
-     }
+        }  
+    }
     
     /// Create pc2 file object only once:
     if (!pc2) 
@@ -317,10 +319,10 @@ SOP_PointCache::cookMySop(OP_Context &context)
     {
         int ptnum     = 0;
         int numPoints = pc2->header->numPoints;
-        FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
+        GA_FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
 	    {
-	        UT_Vector4 p;
-	        p = ppt->getPos();
+	        UT_Vector3 p;
+	        p = ppt->getPos3();
 	        if (interpol == PC2_NONE)
 	        {
                 p.x() = points[3*ptnum];
@@ -355,7 +357,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
                 
                 /// Finally eval. spline and assign result to vector
                 spline->evaluate(delta, pp, 3, (UT_ColorType)2);
-                p.assign(pp[0], pp[1], pp[2], 1.0);
+                p.assign(pp[0], pp[1], pp[2]);
             }
             /// Flip space for Max compatibile: x, z,-y.
             if (flip)
@@ -366,7 +368,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
                 p.y() = z;
             }
             
-            ppt->getPos() = p;
+            ppt->setPos3(p);
             ptnum++;
             
             /// We really shouldn't go over this boundary...
@@ -377,7 +379,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     
     ///Update normals:
     if (computeNormals)
-        GB_AttributeRef ref = gdp->normal();
+        GA_RWAttributeRef ref = gdp->normal();
     
     /// Notify the display cache that we have directly edited
     gdp->notifyCache(GU_CACHE_ALL);

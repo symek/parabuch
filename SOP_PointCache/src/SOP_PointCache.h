@@ -1,5 +1,5 @@
-#ifndef __SOP_PointWave_h__
-#define __SOP_PointWave_h__
+#ifndef __SOP_PointCache_h__
+#define __SOP_PointCache_h__
 
 #include <SOP/SOP_Node.h>
 
@@ -91,7 +91,7 @@ private:
     GU_DetailGroupPair	 myDetailGroupPair;
     /// This is the group of geometry to be manipulated by this SOP and cooked
     /// by the method "cookInputGroups".
-    const GB_PointGroup	*myGroup;
+    const GA_PointGroup	*myGroup;
     float               *points;
     int                 dointerpolate;
     PC2_File            *pc2;
