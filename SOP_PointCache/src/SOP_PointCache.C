@@ -63,7 +63,7 @@ PRM_Template
 SOP_PointCache::myTemplateList[] = {
     PRM_Template(PRM_STRING, 1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu),
     PRM_Template(PRM_FILE,	 1, &names[0], PRMoneDefaults, 0, 0, SOP_PointCache::triggerReallocate),
-    PRM_Template(PRM_ORD,    1, &names[1], 0, &interpolMenu),
+    PRM_Template(PRM_ORD,    1, &names[1], 0, &interpolMenu, 0, SOP_PointCache::triggerReallocate),
     PRM_Template(PRM_TOGGLE, 1, &names[2]),
     PRM_Template(PRM_TOGGLE, 1, &names[4]),
     PRM_Template(PRM_TOGGLE, 1, &names[5]),
@@ -81,7 +81,7 @@ SOP_PointCache::SOP_PointCache(OP_Network *net, const char *name, OP_Operator *o
 {
     pc2            = NULL;
     points         = NULL;
-    dointerpolate  = NULL;
+    dointerpolate  = 0;
     reallocate     = false;
 }
 
@@ -147,12 +147,11 @@ SOP_PointCache::cookMySop(OP_Context &context)
     double		 t;
     UT_String filename;
     UT_String interpol_str;
-    int       interpol;
+    //int       interpol;
     int       flip;
     int       addrest;
     int       computeNormals;
     UT_Spline *spline = NULL;
-
     /// Info buffers
     char      info_buff[200];
     const char *info;
@@ -171,15 +170,10 @@ SOP_PointCache::cookMySop(OP_Context &context)
     t              = context.getTime();
     flip           = FLIP(t);
     addrest        = ADDREST(t);
-    interpol       = INTERPOL(interpol_str, t);
+    dointerpolate  = INTERPOL(interpol_str, t);
     computeNormals = COMPUTENORMALS(t);
     FILENAME(filename, t);
-    
-    /// We need to keep track of that 
-    /// in case user changes setting:
-    if (!dointerpolate) dointerpolate = interpol;
-    if (dointerpolate != interpol) reallocate = true;
-    
+
     /// Get frame. FIXME: This should be probably provided by an user.
     float frame = (float) context.getFloatFrame();
     
@@ -230,7 +224,6 @@ SOP_PointCache::cookMySop(OP_Context &context)
         }  
     }
     
-   
 	/// Lets give the user some information:
 	sprintf(info_buff, "File   : %s \nPoints : %d \nStart  : %f \nRate   : %f \nSamples: %d\nFrames: %f",
 	            filename.buffer(),  pc2->header->numPoints, pc2->header->startFrame, 
@@ -244,7 +237,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Also adjust time steps, i.e.: one step for no interpolation, two for linear,
     /// three (starting backwards + current + next) for cubic. I should use here BRI
     /// from Timeblender project here, instead of cutmull-rom.
-    int steps = interpol + 1;
+    int steps = dointerpolate + 1;
     if (!points || reallocate)
     {
         if (reallocate)
@@ -262,7 +255,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	/// Abandom if frame exceeds samples range.
 	/// In case of supersampling we switch limit to take
 	/// sampling rate into account. 
-	int frame_limit = (!interpol) ? pc2->header->numSamples : \
+	int frame_limit = (!dointerpolate) ? pc2->header->numSamples : \
 	(pc2->header->numSamples * pc2->header->sampleRate);
 	if ((frame > frame_limit) || (frame < pc2->header->startFrame))
 	{
@@ -274,12 +267,12 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	/// In case of cubic, we shift sample -1, and take 3 steps,
 	/// None and linear require 2 steps and sample == current == $F-1.
 	/// Delta will be used to drive interpolants (0,1). 
-	float sample    = (!interpol) ? (frame-1) : (frame-1) * (1.0/pc2->header->sampleRate);
+	float sample    = (!dointerpolate) ? (frame-1) : (frame-1) * (1.0/pc2->header->sampleRate);
 	fpreal32 delta  = sample - SYSfloor(sample);
 	sample          = SYSfloor(sample);
 	
 	/// We also create a single spline object.
-	if (interpol == PC2_CUBIC)
+	if (dointerpolate == PC2_CUBIC)
 	{
 	    sample -= 1; 
 	    sample = SYSclamp(sample, 0.0f, 1.0*pc2->header->numSamples);
@@ -291,11 +284,11 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	}
 	
 	/// Don't deceive an user if no supersamples found in a file:
-	if (interpol && pc2->header->sampleRate==1.0)
+	if (dointerpolate && pc2->header->sampleRate==1.0)
 	    addWarning(SOP_MESSAGE, "Sample rate is 1.0, excpect poor interpolation!");
 	    
 	/// Having interpolation turned off and samples rate < 1.0 doesn't play nice eihter:
-	if (!interpol && pc2->header->sampleRate<1.0)
+	if (!dointerpolate && pc2->header->sampleRate<1.0)
 	    addWarning(SOP_MESSAGE, "No interpolation selected. Supersampling will cause animation longer (frames == samples)");
 	
     /// Load array at 'sample' point 'steps' wide, to 'points[]' array 
@@ -315,13 +308,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	    {
 	        UT_Vector3 p;
 	        p = ppt->getPos3();
-	        if (interpol == PC2_NONE)
+	        if (dointerpolate == PC2_NONE)
 	        {
                 p.x() = points[3*ptnum];
                 p.y() = points[3*ptnum+1];
                 p.z() = points[3*ptnum+2];
             }
-            else if (interpol == PC2_LINEAR)
+            else if (dointerpolate == PC2_LINEAR)
             {
                 /// Array is flat and continous:, 
                 /// ax,ay,az,bx,by,bz, then next sample: ax,ay,az,bx...
@@ -330,7 +323,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
                 p.z() = SYSlerp(points[3*ptnum+2], points[3*(ptnum + numPoints)+2], delta);
             
             }
-            else if (interpol == PC2_CUBIC)
+            else if (dointerpolate == PC2_CUBIC)
             {
                 fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
                 fpreal32 v0[] = {points[3*ptnum], 
