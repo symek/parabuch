@@ -107,6 +107,58 @@ private:
     bool                reallocate;
     PC2_File            *pc2;
 };
+
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// FIXME: This is heavly under construction!!!
+/////////////////////////////////////////////////////////////////////////////////////////
+class op_InterpolateLinear {
+public:
+    op_InterpolateLinear(GU_Detail *v_ph, float mydelta, float *mypoints, int mynumPoints): 
+    myV_ph(v_ph), delta(mydelta), points(mypoints), numPoints(mynumPoints) {};
+    // Take a SplittableRange (not a GA_Range)
+    void operator()(const GA_SplittableRange &r) const
+    {
+        // Iterate over pages in the range
+        for (GA_PageIterator pit = r.beginPages(); !pit.atEnd(); ++pit)
+        {
+            GA_Offset start, end;
+            // Perform any per-page setup required, then
+            GA_RWPageHandleV3   handleP(myV_ph->getP());
+            handleP.setPage(*pit);
+            // iterate over the elements in the page.
+            cout << "Thread: " << UT_Thread::getMyThreadId() << endl;
+            for (GA_Iterator it(pit.begin()); it.blockAdvance(start, end); )
+            {
+                for (GA_Offset i = start; i < end; ++i)
+                {
+                    UT_Vector3 p;
+                    int ptnum = i;
+                    p.x() = SYSlerp(points[3*ptnum  ], points[3*(ptnum + numPoints)],   delta);
+                    p.y() = SYSlerp(points[3*ptnum+1], points[3*(ptnum + numPoints)+1], delta);
+                    p.z() = SYSlerp(points[3*ptnum+2], points[3*(ptnum + numPoints)+2], delta);
+                    handleP.set(i, p);
+                }
+            }
+        }
+    }
+private:
+    GU_Detail *myV_ph;
+    float     delta;
+    float    *points;
+    int       numPoints;
+
+};
+
+void
+threaded_pc2Lerp(const GA_Range &range, GU_Detail *ph, float mydelta, float *mypoints, int mynumPoints)
+{
+    // Create a GA_SplittableRange from the original range
+    GA_SplittableRange splitRange = GA_SplittableRange(range);
+    cout << "can thread?: " << splitRange.canMultiThread() << endl;
+    UTparallelFor(splitRange, op_InterpolateLinear(ph, mydelta, mypoints, mynumPoints));
+}
+
 } // End PC2SOP namespace
 
 #endif
