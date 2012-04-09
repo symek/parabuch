@@ -61,15 +61,14 @@ static PRM_ChoiceList  interpolMenu(PRM_CHOICELIST_SINGLE, interpolChoices);
 
 PRM_Template
 SOP_PointCache::myTemplateList[] = {
-    PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu),
-    PRM_Template(PRM_FILE,	1, &names[0], PRMoneDefaults, 0),
-    PRM_Template(PRM_ORD, 1, &names[1], 0, &interpolMenu),
+    PRM_Template(PRM_STRING, 1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu),
+    PRM_Template(PRM_FILE,	 1, &names[0], PRMoneDefaults, 0, 0, SOP_PointCache::triggerReallocate),
+    PRM_Template(PRM_ORD,    1, &names[1], 0, &interpolMenu),
     PRM_Template(PRM_TOGGLE, 1, &names[2]),
     PRM_Template(PRM_TOGGLE, 1, &names[4]),
     PRM_Template(PRM_TOGGLE, 1, &names[5]),
     PRM_Template(),
 };
-
 
 OP_Node *
 SOP_PointCache::myConstructor(OP_Network *net, const char *name, OP_Operator *op)
@@ -80,10 +79,10 @@ SOP_PointCache::myConstructor(OP_Network *net, const char *name, OP_Operator *op
 SOP_PointCache::SOP_PointCache(OP_Network *net, const char *name, OP_Operator *op)
 	: SOP_Node(net, name, op), myGroup(0)
 {
-    pc2 = NULL;
-    points = NULL;
-    dointerpolate = NULL;
-    cout << "Hello" << endl;
+    pc2            = NULL;
+    points         = NULL;
+    dointerpolate  = NULL;
+    reallocate     = false;
 }
 
 SOP_PointCache::~SOP_PointCache() {delete points;}
@@ -97,23 +96,22 @@ SOP_PointCache::cookInputGroups(OP_Context &context, int alone)
 }
 
 
-/// Read pc2 header storing it in PC2_File->header structure.
-/// Also validates point cache file.
+// Read pc2 header storing it in PC2_File->header structure.
+// Also validates point cache file.
 int
 PC2_File::loadFile(UT_String *file)
 {
     int success;
     filename->harden(file->buffer());
 	FILE * fin = fopen(file->buffer(), "rb");
-	if (fin == NULL) 
-        return 0;
+	if (fin == NULL)  return 0;
 	success = fread(buffer, 32, 1, fin);
 	fclose(fin);
-	if (!success) 
-        return 0;
+	if (!success) return 0;
 	header = (PC2Header*) buffer;
-	if ((UT_String("POINTCACHE2").hash() == UT_String(header->magic).hash()) \
-	                 && (header->version == 1))
+
+	if ((UT_String("POINTCACHE2").hash() == UT_String(header->magic).hash()) && \
+    (header->version == 1))
 	{
 	    loaded = 1;
         return 1;
@@ -122,19 +120,21 @@ PC2_File::loadFile(UT_String *file)
 }
 
 
-/// Read into (float)*pr of size 3*sizeof(float)*numpoints*steps 
-/// position from a opened file in (float) time, along with supersampaled (int) steps. 
+/* Read into (float)*pr of size 3*sizeof(float)*numpoints*steps 
+// position from a opened file in (float) time, along with supersampaled (int) steps. 
+*/
 int
 PC2_File::getPArray(int sample, int steps, float *pr)
 {
     int success;
 	FILE * fin = fopen(filename->buffer(), "rb");
-	if (fin == NULL) 
-        return 0;
+	if (fin == NULL)  return 0;
+
 	long offset = 32 + (3*sizeof(float)*header->numPoints) * sample;
     fseek(fin, offset, SEEK_SET);
     success = fread(pr, sizeof(float), steps*header->numPoints*3, fin);
     fclose(fin);
+
     if (!success) return 0;
     return 1;
 }
@@ -145,22 +145,17 @@ SOP_PointCache::cookMySop(OP_Context &context)
 {
     GEO_Point *ppt;
     double		 t;
- 
     UT_String filename;
     UT_String interpol_str;
-    //UT_String pGroup;
     int       interpol;
     int       flip;
     int       addrest;
     int       computeNormals;
     UT_Spline *spline = NULL;
+
     /// Info buffers
-    char     info_buff[200];
+    char      info_buff[200];
     const char *info;
-    
-    /// Flag to indicate new point
-    /// array needs to be allocated
-    bool reallocate = false;
 
     /// Make time depend:
     OP_Node::flags().timeDep = 1;
@@ -184,20 +179,14 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// in case user changes setting:
     if (!dointerpolate) dointerpolate = interpol;
     if (dointerpolate != interpol) reallocate = true;
-
-    /// It's a hack FIXME: trigger reallocation in case 'interpol' changes.
-    /// I don't know how to use callback on parameter.
-    reallocate = true;
     
-    /// Get frame. FIXME: This should be probably provided
-    /// by an user.
+    /// Get frame. FIXME: This should be probably provided by an user.
     float frame = (float) context.getFloatFrame();
     
     /// Create 'rest' attribute if requested:
     if (addrest)
     {
-        GA_RWAttributeRef restattr = gdp->addRestAttribute(GEO_POINT_DICT);
-
+        GA_RWAttributeRef    restattr = gdp->addRestAttribute(GEO_POINT_DICT);
         GA_ROPageHandleV3    Phandle(gdp->getP());
         GA_RWPageHandleV3    Rhandle(gdp, GEO_POINT_DICT, "rest");
         UT_Vector3           Pvalue; 
@@ -230,6 +219,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     
     /// Reload header if filename changed from a last time
     /// FIXME: We should also check if inputGeo has changed.
+    
     if (pc2->getFilename()->hash() != filename.hash())
     {
         reallocate = true;
@@ -239,13 +229,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
             return error();
         }  
     }
+    
    
-	/// Lets give an user some information:
+	/// Lets give the user some information:
 	sprintf(info_buff, "File   : %s \nPoints : %d \nStart  : %f \nRate   : %f \nSamples: %d\nFrames: %f",
 	            filename.buffer(),  pc2->header->numPoints, pc2->header->startFrame, 
 	            pc2->header->sampleRate, pc2->header->numSamples, 
-	            pc2->header->sampleRate * pc2->header->numSamples );
-	                       
+	            pc2->header->sampleRate * pc2->header->numSamples );                  
 	/// Is it ugly?
 	info = &info_buff[0];
 	addMessage(SOP_MESSAGE, info);
@@ -257,9 +247,11 @@ SOP_PointCache::cookMySop(OP_Context &context)
     int steps = interpol + 1;
     if (!points || reallocate)
     {
-        if (reallocate) 
+        if (reallocate)
             delete points;
-        points = new float[3*pc2->header->numPoints*steps];
+        points     = new float[3*pc2->header->numPoints*steps];
+        reallocate = false;
+
         if (!points)
         {
             addWarning(SOP_MESSAGE, "Can't allocate storage.");
@@ -300,13 +292,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	
 	/// Don't deceive an user if no supersamples found in a file:
 	if (interpol && pc2->header->sampleRate==1.0)
-	    addWarning(SOP_MESSAGE, "Sample rate is 1.0, interpolation will be poor.");
+	    addWarning(SOP_MESSAGE, "Sample rate is 1.0, excpect poor interpolation!");
 	    
 	/// Having interpolation turned off and samples rate < 1.0 doesn't play nice eihter:
 	if (!interpol && pc2->header->sampleRate<1.0)
 	    addWarning(SOP_MESSAGE, "No interpolation selected. Supersampling will cause animation longer (frames == samples)");
 	
-    /// Load array at 'sample', 'steps' wide, to 'points' array 
+    /// Load array at 'sample' point 'steps' wide, to 'points[]' array 
     if (!pc2->getPArray((int) sample, steps, points))
     {
         addWarning(SOP_MESSAGE, "Can't load points[] from file.");
@@ -331,7 +323,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
             }
             else if (interpol == PC2_LINEAR)
             {
-                /// Array is flat and cont.:, 
+                /// Array is flat and continous:, 
                 /// ax,ay,az,bx,by,bz, then next sample: ax,ay,az,bx...
                 p.x() = SYSlerp(points[3*ptnum  ], points[3*(ptnum + numPoints)],   delta);
                 p.y() = SYSlerp(points[3*ptnum+1], points[3*(ptnum + numPoints)+1], delta);
