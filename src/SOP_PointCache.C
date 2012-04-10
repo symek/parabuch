@@ -21,6 +21,7 @@
 #include <UT/UT_Spline.h>
 #include <UT/UT_Color.h>
 #include <UT/UT_Thread.h>
+#include <VM/VM_Math.h>
 
 // Standards:
 #include <stdio.h>

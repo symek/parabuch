@@ -15,7 +15,7 @@
    height="50"
    id="svg2985"
    version="1.1"
-   inkscape:version="0.48.0 r9654"
+   inkscape:version="0.47 r22583"
    sodipodi:docname="SOP_PointCache.svg">
   <defs
      id="defs2987">
@@ -208,16 +208,16 @@
      inkscape:pageshadow="2"
      inkscape:zoom="14.937387"
      inkscape:cx="6.3967439"
-     inkscape:cy="23.14669"
+     inkscape:cy="23.012798"
      inkscape:current-layer="layer1"
      showgrid="true"
      inkscape:grid-bbox="true"
      inkscape:document-units="px"
      inkscape:snap-page="true"
      inkscape:window-width="1920"
-     inkscape:window-height="1147"
+     inkscape:window-height="1150"
      inkscape:window-x="0"
-     inkscape:window-y="24"
+     inkscape:window-y="25"
      inkscape:window-maximized="1" />
   <metadata
      id="metadata2990">
@@ -263,13 +263,13 @@
     <text
        xml:space="preserve"
        style="font-size:10px;font-style:italic;font-variant:normal;font-weight:bold;font-stretch:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:LMRomanSlant9;-inkscape-font-specification:LMRomanSlant9 Bold Italic"
-       x="28.711498"
+       x="26.711498"
        y="40.259281"
        id="text6643"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
          id="tspan6645"
-         x="28.711498"
+         x="26.711498"
          y="40.259281">pc2</tspan></text>
   </g>
 </svg>

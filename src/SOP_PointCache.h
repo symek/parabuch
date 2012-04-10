@@ -119,21 +119,29 @@ public:
     // Take a SplittableRange (not a GA_Range)
     void operator()(const GA_SplittableRange &r) const
     {
+        GA_ROPageHandleV3   readHP (myV_ph->getP());
+        GA_RWPageHandleV3   handleP(myV_ph->getP());
         // Iterate over pages in the range
         for (GA_PageIterator pit = r.beginPages(); !pit.atEnd(); ++pit)
         {
             GA_Offset start, end;
             // Perform any per-page setup required, then
-            GA_RWPageHandleV3   handleP(myV_ph->getP());
+            readHP.setPage(*pit);
             handleP.setPage(*pit);
             // iterate over the elements in the page.
             cout << "Thread: " << UT_Thread::getMyThreadId() << endl;
             for (GA_Iterator it(pit.begin()); it.blockAdvance(start, end); )
             {
-                for (GA_Offset i = start; i < end; ++i)
+                cout << "Start: " << start << ", End: " << end << endl;
+                
+                //VM_Math::lerp(
+                
+                for (GA_Offset i = start; i < end-1; ++i)
                 {
                     UT_Vector3 p;
-                    int ptnum = i;
+                    int ptnum = start + i;
+                    cout << ptnum  << ", "; 
+                    //VM_Math::lerp(d, a, b, t) 
                     p.x() = SYSlerp(points[3*ptnum  ], points[3*(ptnum + numPoints)],   delta);
                     p.y() = SYSlerp(points[3*ptnum+1], points[3*(ptnum + numPoints)+1], delta);
                     p.z() = SYSlerp(points[3*ptnum+2], points[3*(ptnum + numPoints)+2], delta);
