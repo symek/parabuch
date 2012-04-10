@@ -3,9 +3,9 @@
  * It meant to do it faster than existing Python implementation.
  * 
  * skk. 
- * 
- * - H12 : 03-04-2012
- * - init: 25-11-2011
+ * - 10-04-2012: threading/SIMD (experimental)
+ * - 03-04-2012: H12 
+ * - 25-11-2011: init
  *
  */
 
@@ -22,6 +22,7 @@
 #include <UT/UT_Color.h>
 #include <UT/UT_Thread.h>
 #include <VM/VM_Math.h>
+#include <UT/UT_ValArray.h>
 
 // Standards:
 #include <stdio.h>
@@ -55,9 +56,9 @@ static PRM_Name names[] = {
     PRM_Name("filename",	   "PC2 File"),
     PRM_Name("interpol",       "Interpolation"),
     PRM_Name("computeNormals", "Compute Normals"),
-    PRM_Name("pGroup",           "Primitive Group"),
-    PRM_Name("flip",            "Flip Space"),
-    PRM_Name("addrest",          "Add Rest"),
+    PRM_Name("pGroup",         "Primitive Group"),
+    PRM_Name("flip",           "Flip Space"),
+    PRM_Name("addrest",        "Add Rest"),
 };
 
 
@@ -319,20 +320,19 @@ SOP_PointCache::cookMySop(OP_Context &context)
     ///	handle point groups.
     if (error() < UT_ERROR_ABORT && cookInputGroups(context) < UT_ERROR_ABORT)
     {
-       
         int numPoints = pc2->header->numPoints;
-        UT_Vector3 p;
-
         if (dointerpolate == PC2_NONE)
         {
-            int ptnum     = 0;
+            int ptnum = 0;
             GA_FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
 	        {
-	            //UT_Vector3 p;
+	            UT_Vector3 p;
 	            p = ppt->getPos3();
                 p.x() = points[3*ptnum];
                 p.y() = points[3*ptnum+1];
                 p.z() = points[3*ptnum+2];
+                if (flip) 
+                    flip_space(p);
                 ppt->setPos3(p);
                 ptnum++;
                 ptnum = SYSclamp(ptnum, 0, numPoints-1);
@@ -340,11 +340,27 @@ SOP_PointCache::cookMySop(OP_Context &context)
         }
         else if (dointerpolate == PC2_LINEAR)
         {
-
-            // Sends gdp, points, and delta to working threads:            
-            const GA_Range      range(*myGroup);    
-            threaded_pc2Lerp(range, gdp, delta, points, numPoints);
-            
+            #if 1
+            // Sends gdp, points, and delta to working threads:
+            // FIXME: range(*myGroup) causes Offset per page to start 
+            // always from 0, instead of page offset and I haven't found
+            //  a way to fix it, so for now point group is not supported.
+            const GA_Range range(gdp->getPointRange());    
+            threaded_simd_lerp(range, gdp, delta, points, numPoints);
+            #else
+            int ptnum = 0;
+            GA_FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
+            {
+                p.x() = SYSlerp(points[3*ptnum  ], points[3*(ptnum + numPoints)],   delta);
+                p.y() = SYSlerp(points[3*ptnum+1], points[3*(ptnum + numPoints)+1], delta);
+                p.z() = SYSlerp(points[3*ptnum+2], points[3*(ptnum + numPoints)+2], delta);
+                if (flip) 
+                    flip_space(p);	        
+                ppt->setPos3(p);
+                ptnum++;
+                ptnum = SYSclamp(ptnum, 0, numPoints-1);
+            }
+            #endif
         }
         else if (0!=0) //(dointerpolate == PC2_CUBIC)
         {}

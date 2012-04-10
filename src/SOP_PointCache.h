@@ -25,6 +25,15 @@ enum PC2_Interpol_Type
     PC2_CUBIC,
 };
 
+// Flip vectors to match 3DSMax coordinate system.
+inline void flip_space(UT_Vector3 &p)
+{
+    float z;
+    z     = p.z();
+    p.z() = -p.y();
+    p.y() = z;      
+}
+
 /// PC2 handler class
 class PC2_File
 {
@@ -108,63 +117,63 @@ private:
     PC2_File            *pc2;
 };
 
-
 ///////////////////////////////////////////////////////////////////////////////////////////
-// FIXME: This is heavly under construction!!!
+// FIXME: This is (was heavly) under construction!!!
 /////////////////////////////////////////////////////////////////////////////////////////
 class op_InterpolateLinear {
 public:
-    op_InterpolateLinear(GU_Detail *v_ph, float mydelta, float *mypoints, int mynumPoints): 
-    myV_ph(v_ph), delta(mydelta), points(mypoints), numPoints(mynumPoints) {};
+    op_InterpolateLinear(GU_Detail *gdp, float delta, float *points, int numPoints): 
+    mygdp(gdp), mydelta(delta), mypoints(points), mynumPoints(numPoints) {};
     // Take a SplittableRange (not a GA_Range)
-    void operator()(const GA_SplittableRange &r) const
+    void operator()(const GA_SplittableRange &range) const
     {
-        GA_ROPageHandleV3   readHP (myV_ph->getP());
-        GA_RWPageHandleV3   handleP(myV_ph->getP());
+        GA_RWPageHandleV3   handleP(mygdp->getP());
         // Iterate over pages in the range
-        for (GA_PageIterator pit = r.beginPages(); !pit.atEnd(); ++pit)
+        for (GA_PageIterator pit = range.beginPages(); !pit.atEnd(); ++pit)
         {
             GA_Offset start, end;
-            // Perform any per-page setup required, then
-            readHP.setPage(*pit);
             handleP.setPage(*pit);
+       
             // iterate over the elements in the page.
-            cout << "Thread: " << UT_Thread::getMyThreadId() << endl;
             for (GA_Iterator it(pit.begin()); it.blockAdvance(start, end); )
             {
-                cout << "Start: " << start << ", End: " << end << endl;
-                
-                //VM_Math::lerp(
-                
-                for (GA_Offset i = start; i < end-1; ++i)
+                #if 1
+                // SIMD based linear interpolation.
+                // FIXME: Implement flip:
+                VM_Math::lerp((fpreal32 *)&handleP.value(start), &mypoints[start*3], 
+                            &mypoints[(start+mynumPoints)*3], (fpreal32)mydelta, 3*(end - start));
+                #else
+                // Standard loop:
+                for (GA_Offset i = start; i < end; ++i)
                 {
                     UT_Vector3 p;
-                    int ptnum = start + i;
-                    cout << ptnum  << ", "; 
-                    //VM_Math::lerp(d, a, b, t) 
-                    p.x() = SYSlerp(points[3*ptnum  ], points[3*(ptnum + numPoints)],   delta);
-                    p.y() = SYSlerp(points[3*ptnum+1], points[3*(ptnum + numPoints)+1], delta);
-                    p.z() = SYSlerp(points[3*ptnum+2], points[3*(ptnum + numPoints)+2], delta);
+                    p.x() = SYSlerp(mypoints[3*i  ], mypoints[3*(i + mynumPoints)],   mydelta);
+                    p.y() = SYSlerp(mypoints[3*i+1], mypoints[3*(i + mynumPoints)+1], mydelta);
+                    p.z() = SYSlerp(mypoints[3*i+2], mypoints[3*(i + mynumPoints)+2], mydelta);
+                    // FIXME: Make conditional flip.
+                    PC2SOP::flip_space(p)
                     handleP.set(i, p);
                 }
+                #endif
             }
         }
     }
+
 private:
-    GU_Detail *myV_ph;
-    float     delta;
-    float    *points;
-    int       numPoints;
+    GU_Detail *mygdp;
+    float     mydelta;
+    float     *mypoints;
+    int       mynumPoints;
 
 };
 
 void
-threaded_pc2Lerp(const GA_Range &range, GU_Detail *ph, float mydelta, float *mypoints, int mynumPoints)
+threaded_simd_lerp(const GA_Range &range, GU_Detail *gdp, float delta, 
+                    float *points, int numPoints)
 {
     // Create a GA_SplittableRange from the original range
-    GA_SplittableRange splitRange = GA_SplittableRange(range);
-    cout << "can thread?: " << splitRange.canMultiThread() << endl;
-    UTparallelFor(splitRange, op_InterpolateLinear(ph, mydelta, mypoints, mynumPoints));
+    GA_SplittableRange split_range = GA_SplittableRange(range);
+    UTparallelFor(split_range, op_InterpolateLinear(gdp, delta, points, numPoints));
 }
 
 } // End PC2SOP namespace
