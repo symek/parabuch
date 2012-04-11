@@ -35,8 +35,6 @@
 // Own stuff:
 #include "SOP_PointCache.h"
 
-
-
 using namespace PC2SOP;
 using namespace std;
 
@@ -135,20 +133,30 @@ PC2_File::loadFile(UT_String *file)
 
 /* Read into (float)*pr of size 3*sizeof(float)*numpoints*steps 
 // position from a opened file in (float) time, along with supersampaled (int) steps. 
+
+   The way to check if fread reads correct number of samples before 
+   reaching the end of the file could be like this:
+   
+        result = fread (buffer,1,lSize,pFile);
+        if (result != lSize) 
+            return 1; // error occured. 
 */
 int
 PC2_File::getPArray(int sample, int steps, float *pr)
 {
-    int success;
+    size_t result;
+    size_t size = steps*header->numPoints*3;
+
 	FILE * fin = fopen(filename->buffer(), "rb");
-	if (fin == NULL)  return 0;
+	if (fin == NULL) return 0;
 
 	long offset = 32 + (3*sizeof(float)*header->numPoints) * sample;
     fseek(fin, offset, SEEK_SET);
-    success = fread(pr, sizeof(float), steps*header->numPoints*3, fin);
+    result = fread(pr, sizeof(float), size, fin);
     fclose(fin);
 
-    if (!success) return 0;
+    if (result != size ) 
+        return 0;
     return 1;
 }
 
@@ -311,11 +319,6 @@ SOP_PointCache::cookMySop(OP_Context &context)
         return error();
     }
 
-    /////////////////////////////////////////////////////////////////////////
-    //UNDER CONSTRUCTION  DOESNT WORK!! BELLOW CODE IS BORKEN as of 9. April 2012
-    /////////////////////////////////////////////////////////////////////////
-
-
     /// Here we determine which groups we have to work on.  We only
     ///	handle point groups.
     if (error() < UT_ERROR_ABORT && cookInputGroups(context) < UT_ERROR_ABORT)
@@ -349,58 +352,57 @@ SOP_PointCache::cookMySop(OP_Context &context)
             threaded_simd_lerp(range, gdp, delta, points, numPoints);
             #else
             int ptnum = 0;
+            UT_Vector3 p;
             GA_FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
             {
                 p.x() = SYSlerp(points[3*ptnum  ], points[3*(ptnum + numPoints)],   delta);
                 p.y() = SYSlerp(points[3*ptnum+1], points[3*(ptnum + numPoints)+1], delta);
                 p.z() = SYSlerp(points[3*ptnum+2], points[3*(ptnum + numPoints)+2], delta);
                 if (flip) 
-                    flip_space(p);	        
+                    PC2SOP::flip_space(p);	        
                 ppt->setPos3(p);
                 ptnum++;
                 ptnum = SYSclamp(ptnum, 0, numPoints-1);
             }
             #endif
         }
-        else if (0!=0) //(dointerpolate == PC2_CUBIC)
-        {}
-            /*
-            fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
-            fpreal32 v0[] = {points[3*ptnum], 
-                             points[3*ptnum+1], 
-                             points[3*ptnum+2]};
-            fpreal32 v1[] = {points[3*(ptnum + numPoints)], 
-                             points[3*(ptnum + numPoints)+1], 
-                             points[3*(ptnum + numPoints)+2]};
-            fpreal32 v2[] = {points[3*(ptnum + numPoints*2)], 
-                             points[3*(ptnum + numPoints*2)+1], 
-                             points[3*(ptnum + numPoints*2)+2]};
-            
-            spline->setValue(0, v0, 3); 
-            spline->setValue(1, v1, 3); 
-            spline->setValue(2, v2, 3);
-            
-            /// Finally eval. spline and assign result to vector
-            spline->evaluate(delta, pp, 3, (UT_ColorType)2);
-            p.assign(pp[0], pp[1], pp[2]);
-           
-        }
-
-        /// Flip space for Max compatibile: x, z,-y.
-        if (flip)
+        else if (dointerpolate == PC2_CUBIC)
         {
-           
-            float z;
-            z     = p.z();
-            p.z() = -p.y();
-            p.y() = z;
+            #if 0
+            // TODO:  SIMD cubic.
+            const GA_Range range(gdp->getPointRange());    
+            threaded_simd_cubic(range, gdp, delta, points, numPoints);
+            #else
+            int ptnum = 0;
+            UT_Vector3 p;
+            GA_FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
+            {
+                fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
+                fpreal32 v0[] = {points[3*ptnum], 
+                                 points[3*ptnum+1], 
+                                 points[3*ptnum+2]};
+                fpreal32 v1[] = {points[3*(ptnum + numPoints)], 
+                                 points[3*(ptnum + numPoints)+1], 
+                                 points[3*(ptnum + numPoints)+2]};
+                fpreal32 v2[] = {points[3*(ptnum + numPoints*2)], 
+                                 points[3*(ptnum + numPoints*2)+1], 
+                                 points[3*(ptnum + numPoints*2)+2]};
+                
+                spline->setValue(0, v0, 3); 
+                spline->setValue(1, v1, 3); 
+                spline->setValue(2, v2, 3);
+                
+                /// Finally eval. spline and assign result to vector
+                spline->evaluate(delta, pp, 3, (UT_ColorType)2);
+                p.assign(pp[0], pp[1], pp[2]);
+                if (flip) 
+                    PC2SOP::flip_space(p);	
+                ppt->setPos3(p);
+                ptnum++;
+                ptnum = SYSclamp(ptnum, 0, numPoints-1);
+            }
+            #endif
         }
-        
-        ppt->setPos3(p);
-        ptnum++;
-         */
-        /// We really shouldn't go over this boundary...
-        //ptnum = SYSclamp(ptnum, 0, numPoints-1);
 	   
     }
     

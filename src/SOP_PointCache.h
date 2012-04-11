@@ -25,7 +25,7 @@ enum PC2_Interpol_Type
     PC2_CUBIC,
 };
 
-// Flip vectors to match 3DSMax coordinate system.
+/// Flip vectors to match 3DSMax coordinate system.
 inline void flip_space(UT_Vector3 &p)
 {
     float z;
@@ -117,9 +117,7 @@ private:
     PC2_File            *pc2;
 };
 
-///////////////////////////////////////////////////////////////////////////////////////////
-// FIXME: This is (was heavly) under construction!!!
-/////////////////////////////////////////////////////////////////////////////////////////
+/// Threaded worker class for linear interpolation.
 class op_InterpolateLinear {
 public:
     op_InterpolateLinear(GU_Detail *gdp, float delta, float *points, int numPoints): 
@@ -175,6 +173,77 @@ threaded_simd_lerp(const GA_Range &range, GU_Detail *gdp, float delta,
     GA_SplittableRange split_range = GA_SplittableRange(range);
     UTparallelFor(split_range, op_InterpolateLinear(gdp, delta, points, numPoints));
 }
+
+
+
+/// Threaded worker class for cubic interpolation.
+class op_InterpolateCubic {
+public:
+    op_InterpolateCubic(GU_Detail *gdp, float delta, float *points, int numPoints): 
+    mygdp(gdp), mydelta(delta), mypoints(points), mynumPoints(numPoints) {};
+    // Take a SplittableRange (not a GA_Range)
+    void operator()(const GA_SplittableRange &range) const
+    {
+        GA_RWPageHandleV3   handleP(mygdp->getP());
+        // Iterate over pages in the range
+        for (GA_PageIterator pit = range.beginPages(); !pit.atEnd(); ++pit)
+        {
+            GA_Offset start, end;
+            handleP.setPage(*pit);
+            UT_Spline *spline  = new UT_Spline();
+            spline->setGlobalBasis(UT_SPLINE_CATMULL_ROM);
+            spline->setSize(3, 3); 
+            // iterate over the elements in the page.
+            for (GA_Iterator it(pit.begin()); it.blockAdvance(start, end); )
+            {
+                #if 0
+                // TODO: SIMD based cubic interpolation.
+                // FIXME: Implement flip:
+                VM_Math::lerp((fpreal32 *)&handleP.value(start), &mypoints[start*3], 
+                            &mypoints[(start+mynumPoints)*3], (fpreal32)mydelta, 3*(end - start));
+                #else
+                // Standard loop:
+               
+                UT_Vector3 p;
+                int n = mynumPoints;
+                fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
+                for (GA_Offset i = start; i < end; ++i)
+                {    
+                    fpreal32 v0[] = {mypoints[3*i], mypoints[3*i+1], mypoints[3*i+2]};
+                    fpreal32 v1[] = {mypoints[3*(i + n)], mypoints[3*(i + n)+1], mypoints[3*(i + n)+2]};
+                    fpreal32 v2[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
+                    spline->setValue(0, v0, 3); 
+                    spline->setValue(1, v1, 3); 
+                    spline->setValue(2, v2, 3);
+                    /// Finally eval. spline and assign result to vector
+                    spline->evaluate(mydelta, pp, 3, (UT_ColorType)2);
+                    p.assign(pp[0], pp[1], pp[2]);
+                    PC2SOP::flip_space(p);
+                    handleP.set(i, p);
+                }
+                #endif
+            }
+            delete spline;
+        }
+    }
+
+private:
+    GU_Detail *mygdp;
+    float     mydelta;
+    float     *mypoints;
+    int       mynumPoints;
+
+};
+
+void
+threaded_simd_cubic(const GA_Range &range, GU_Detail *gdp, float delta, 
+                    float *points, int numPoints)
+{
+    // Create a GA_SplittableRange from the original range
+    GA_SplittableRange split_range = GA_SplittableRange(range);
+    UTparallelFor(split_range, op_InterpolateCubic(gdp, delta, points, numPoints));
+}
+
 
 } // End PC2SOP namespace
 
