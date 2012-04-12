@@ -368,7 +368,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
         }
         else if (dointerpolate == PC2_CUBIC)
         {
-            #if 0
+            #if 1
             // TODO:  SIMD cubic.
             const GA_Range range(gdp->getPointRange());    
             threaded_simd_cubic(range, gdp, delta, points, numPoints);

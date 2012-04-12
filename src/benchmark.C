@@ -16,6 +16,8 @@
 //#include "SOP_PointCache.h"
 
 #include <time.h>
+
+
 class timer {
 	private:
 		double begTime;
@@ -213,14 +215,27 @@ threaded_simd_linear(const GA_Range &range, GU_Detail *gdp, float delta,
 }
 
 
+// Home brew cubic interpolation: 
+inline void 
+cubicInterpolate(fpreal32 &re, fpreal32 y0, fpreal32 y1, 
+                 fpreal32 y2,  fpreal32 y3, fpreal32 mu)
+{
+   fpreal32 a0,a1,a2,a3,mu2;
 
+   mu2 = mu*mu;
+   a0 = y3 - y2 - y0 + y1;
+   a1 = y0 - y1 - a0;
+   a2 = y2 - y0;
+   a3 = y1;
+   re = a0*mu*mu2+a1*mu2+a2*mu+a3;
+}
 
 
 /// Threaded worker class for cubic interpolation.
 class op_InterpolateCubic {
 public:
-    op_InterpolateCubic(GU_Detail *gdp, float delta, float *points, int numPoints): 
-    mygdp(gdp), mydelta(delta), mypoints(points), mynumPoints(numPoints) {};
+    op_InterpolateCubic(GU_Detail *gdp, float delta, float *points, int numPoints, bool simd): 
+    mygdp(gdp), mydelta(delta), mypoints(points), mynumPoints(numPoints), mySIMD(simd) {};
     // Take a SplittableRange (not a GA_Range)
     void operator()(const GA_SplittableRange &range) const
     {
@@ -237,32 +252,52 @@ public:
             // iterate over the elements in the page.
             for (GA_Iterator it(pit.begin()); it.blockAdvance(start, end); )
             {
-                #if 0
-                // TODO: SIMD based cubic interpolation.
-                // FIXME: Implement flip:
-                VM_Math::lerp((fpreal32 *)&handleP.value(start), &mypoints[start*3], 
-                            &mypoints[(start+mynumPoints)*3], (fpreal32)mydelta, 3*(end - start));
-                #else
+                if (mySIMD)
+                {
+                    // TODO: SIMD based cubic interpolation.
+                    // FIXME: Implement flip:
+                    //VM_Math::lerp((fpreal32 *)&handleP.value(start), &mypoints[start*3], 
+                    //            &mypoints[(start+mynumPoints)*3], (fpreal32)mydelta, 3*(end - start));
+                     UT_Vector3 p;
+                    int n = mynumPoints;
+                    fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
+                    for (GA_Offset i = start; i < end; ++i)
+                    {
+                        fpreal32 v0[] = {mypoints[3*i], mypoints[3*i+1], mypoints[3*i+2]};
+                        fpreal32 v1[] = {mypoints[3*(i + n)], mypoints[3*(i + n)+1], mypoints[3*(i + n)+2]};
+                        fpreal32 v2[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
+                        fpreal32 v3[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
+                        cubicInterpolate(pp[0], v0[0], v1[0], v2[0], v3[0], mydelta);
+                        cubicInterpolate(pp[1], v0[1], v1[1], v2[1], v3[1], mydelta);
+                        cubicInterpolate(pp[2], v0[2], v1[2], v2[2], v3[2], mydelta);
+                        p.assign(pp[0], pp[1], pp[2]);
+                        //PC2SOP::flip_space(p);
+                        handleP.set(i, p);
+                    }
+                //#else
                 // Standard loop:
-               
-                UT_Vector3 p;
-                int n = mynumPoints;
-                fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
-                for (GA_Offset i = start; i < end; ++i)
-                {    
-                    fpreal32 v0[] = {mypoints[3*i], mypoints[3*i+1], mypoints[3*i+2]};
-                    fpreal32 v1[] = {mypoints[3*(i + n)], mypoints[3*(i + n)+1], mypoints[3*(i + n)+2]};
-                    fpreal32 v2[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
-                    spline->setValue(0, v0, 3); 
-                    spline->setValue(1, v1, 3); 
-                    spline->setValue(2, v2, 3);
-                    /// Finally eval. spline and assign result to vector
-                    spline->evaluate(mydelta, pp, 3, (UT_ColorType)2);
-                    p.assign(pp[0], pp[1], pp[2]);
-                    //flip_space(p);
-                    handleP.set(i, p);
                 }
-                #endif
+                else
+                {
+                    UT_Vector3 p;
+                    int n = mynumPoints;
+                    fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
+                    for (GA_Offset i = start; i < end; ++i)
+                    {    
+                        fpreal32 v0[] = {mypoints[3*i], mypoints[3*i+1], mypoints[3*i+2]};
+                        fpreal32 v1[] = {mypoints[3*(i + n)], mypoints[3*(i + n)+1], mypoints[3*(i + n)+2]};
+                        fpreal32 v2[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
+                        spline->setValue(0, v0, 3); 
+                        spline->setValue(1, v1, 3); 
+                        spline->setValue(2, v2, 3);
+                        /// Finally eval. spline and assign result to vector
+                        spline->evaluate(mydelta, pp, 3, (UT_ColorType)2);
+                        p.assign(pp[0], pp[1], pp[2]);
+                        //flip_space(p);
+                        handleP.set(i, p);
+                    }
+                }
+                //#endif
             }
         }
         delete spline;
@@ -273,24 +308,19 @@ private:
     float     mydelta;
     float     *mypoints;
     int       mynumPoints;
+    bool      mySIMD;
 
 };
 
 void
 threaded_simd_cubic(const GA_Range &range, GU_Detail *gdp, float delta, 
-                    float *points, int numPoints)
+                    float *points, int numPoints, bool simd)
 {
     // Create a GA_SplittableRange from the original range
     GA_SplittableRange split_range = GA_SplittableRange(range);
-    UTparallelFor(split_range, op_InterpolateCubic(gdp, delta, points, numPoints));
+    UTparallelFor(split_range, op_InterpolateCubic(gdp, delta, points, numPoints, simd));
 }
 
-double diffclock(clock_t clock1,clock_t clock2)
-{
-    double diffticks=clock1-clock2;
-    double diffms=(diffticks)/(CLOCKS_PER_SEC/1000);
-    return diffms;
-}
 
 
 
@@ -362,7 +392,7 @@ main(int argc, char *argv[])
 
     //No interpolation:
     int numPoints = pc2->header->numPoints;
-    int frames    = 200; //pc2->header->numSamples;
+    int frames    = 100; //pc2->header->numSamples;
 
  
     #if 1
@@ -487,20 +517,30 @@ main(int argc, char *argv[])
     
 
 
-      /// Cubic multithead:    
+    /// Cubic multithead HDK:    
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
         for (int i = 0; i < frames; i++)
         {   
-            threaded_simd_cubic(range, &gdp, delta, points, numPoints);
+            threaded_simd_cubic(range, &gdp, delta, points, numPoints, false);
         }
        
-        cout << "Cubic multithread: " << t.current() / UT_Thread::getNumProcessors()  << endl;
+        cout << "Cubic multithread (HDK): " << t.current() / UT_Thread::getNumProcessors()  << endl;
     }
 
-
     
+    /// Cubic multithead (own):    
+    {
+        const GA_Range range(gdp.getPointRange());
+        t.start();
+        for (int i = 0; i < frames; i++)
+        {   
+            threaded_simd_cubic(range, &gdp, delta, points, numPoints, true);
+        }
+       
+        cout << "Cubic multithread (own): " << t.current() / UT_Thread::getNumProcessors()  << endl;
+    }
 
 
     delete points;

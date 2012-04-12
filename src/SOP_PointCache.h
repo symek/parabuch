@@ -175,6 +175,20 @@ threaded_simd_lerp(const GA_Range &range, GU_Detail *gdp, float delta,
 }
 
 
+inline void 
+cubicInterpolate(fpreal32 &re, fpreal32 y0, fpreal32 y1, 
+                 fpreal32 y2,  fpreal32 y3, fpreal32 mu)
+{
+   fpreal32 a0,a1,a2,a3,mu2;
+
+   mu2 = mu*mu;
+   a0 = y3 - y2 - y0 + y1;
+   a1 = y0 - y1 - a0;
+   a2 = y2 - y0;
+   a3 = y1;
+   re = a0*mu*mu2+a1*mu2+a2*mu+a3;
+}
+
 
 /// Threaded worker class for cubic interpolation.
 class op_InterpolateCubic {
@@ -196,11 +210,27 @@ public:
             // iterate over the elements in the page.
             for (GA_Iterator it(pit.begin()); it.blockAdvance(start, end); )
             {
-                #if 0
+                #if 1
+                UT_Vector3 p;
+                int n = mynumPoints;
+                fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
+                for (GA_Offset i = start; i < end; ++i)
+                {
+                    fpreal32 v0[] = {mypoints[3*i], mypoints[3*i+1], mypoints[3*i+2]};
+                    fpreal32 v1[] = {mypoints[3*(i + n)], mypoints[3*(i + n)+1], mypoints[3*(i + n)+2]};
+                    fpreal32 v2[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
+                    fpreal32 v3[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
+                    cubicInterpolate(pp[0], v0[0], v1[0], v2[0], v3[0], mydelta);
+                    cubicInterpolate(pp[1], v0[1], v1[1], v2[1], v3[1], mydelta);
+                    cubicInterpolate(pp[2], v0[2], v1[2], v2[2], v3[2], mydelta);
+                    p.assign(pp[0], pp[1], pp[2]);
+                    PC2SOP::flip_space(p);
+                    handleP.set(i, p);
+                }
                 // TODO: SIMD based cubic interpolation.
                 // FIXME: Implement flip:
-                VM_Math::lerp((fpreal32 *)&handleP.value(start), &mypoints[start*3], 
-                            &mypoints[(start+mynumPoints)*3], (fpreal32)mydelta, 3*(end - start));
+                //VM_Math::lerp((fpreal32 *)&handleP.value(start), &mypoints[start*3], 
+                //            &mypoints[(start+mynumPoints)*3], (fpreal32)mydelta, 3*(end - start));
                 #else
                 // Standard loop:
                
