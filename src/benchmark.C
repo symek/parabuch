@@ -438,7 +438,7 @@ main(int argc, char *argv[])
 
     //No interpolation:
     int numPoints = pc2->header->numPoints;
-    int frames    = 100; //pc2->header->numSamples;
+    int frames    = 500; //pc2->header->numSamples;
 
  
     #if 1
@@ -572,7 +572,7 @@ main(int argc, char *argv[])
             }
         }
         
-         cout << "Cubic single thread: " << t.current()  << endl;
+         cout << "Cubic singlethread (HDK: " << t.current()  << endl;
     }
 
 
@@ -601,7 +601,7 @@ main(int argc, char *argv[])
             threaded_simd_cubic(range, &gdp, delta, points, numPoints, 1);
         }
        
-        cout << "Cubic multithread (own): " << t.current() / UT_Thread::getNumProcessors()  << endl;
+        cout << "Cubic singlethreaded (own): " << t.current() / UT_Thread::getNumProcessors()  << endl;
     }
 
     
@@ -616,7 +616,7 @@ main(int argc, char *argv[])
             threaded_simd_cubic(range, &gdp, delta, points, numPoints, 1);
         }
        
-        cout << "Cubic multithread (own): " << t.current() / UT_Thread::getNumProcessors()  << endl;
+        cout << "Cubic multithreaded (own): " << t.current() / UT_Thread::getNumProcessors()  << endl;
     }
 
 
@@ -630,7 +630,7 @@ main(int argc, char *argv[])
             threaded_simd_cubic(range, &gdp, delta, points, numPoints, 2);
         }
        
-        cout << "Cubic multithread SIMD: " << t.current() / UT_Thread::getNumProcessors()  << endl;
+        cout << "Cubic singlethreaded SIMD: " << t.current() / UT_Thread::getNumProcessors()  << endl;
     }
 
      /// Cubic multithead SIMD (own):    
