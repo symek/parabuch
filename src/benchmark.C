@@ -234,7 +234,7 @@ cubicInterpolate(fpreal32 &re, fpreal32 y0, fpreal32 y1,
 /// Threaded worker class for cubic interpolation.
 class op_InterpolateCubic {
 public:
-    op_InterpolateCubic(GU_Detail *gdp, float delta, float *points, int numPoints, bool simd): 
+    op_InterpolateCubic(GU_Detail *gdp, float delta, float *points, int numPoints, int simd): 
     mygdp(gdp), mydelta(delta), mypoints(points), mynumPoints(numPoints), mySIMD(simd) {};
     // Take a SplittableRange (not a GA_Range)
     void operator()(const GA_SplittableRange &range) const
@@ -242,7 +242,7 @@ public:
         //cout <<  "Thread: " << UT_Thread::getMySequentialThreadIndex() << endl;
         GA_RWPageHandleV3   handleP(mygdp->getP());
         UT_Spline *spline  = new UT_Spline();
-        spline->setGlobalBasis(UT_SPLINE_CATMULL_ROM);
+        spline->setGlobalBasis( UT_SPLINE_MONOTONECUBIC);//UT_SPLINE_CATMULL_ROM);
         spline->setSize(3, 3); 
         // Iterate over pages in the range
         for (GA_PageIterator pit = range.beginPages(); !pit.atEnd(); ++pit)
@@ -252,15 +252,60 @@ public:
             // iterate over the elements in the page.
             for (GA_Iterator it(pit.begin()); it.blockAdvance(start, end); )
             {
-                if (mySIMD)
+                if (mySIMD == 2)
                 {
-                    // TODO: SIMD based cubic interpolation.
-                    // FIXME: Implement flip:
-                    //VM_Math::lerp((fpreal32 *)&handleP.value(start), &mypoints[start*3], 
-                    //            &mypoints[(start+mynumPoints)*3], (fpreal32)mydelta, 3*(end - start));
-                     UT_Vector3 p;
+                    // SIMD cubic interpolation based on SISD code from
+                    // http://paulbourke.net/miscellaneous/interpolation
+                    // For now I need two temp buffers, but I think it can
+                    // be only one...
+                    UT_Vector3 p;
                     int n = mynumPoints;
-                    fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
+                    int l = 3*(end-start);
+                    fpreal32 *y0 =  &mypoints[start*3];
+                    fpreal32 *y1 =  &mypoints[(start+n)*3];
+                    fpreal32 *y2 =  &mypoints[(start+n*2)*3];
+                    fpreal32 *y3 =  &mypoints[(start+n*3)*3];                    
+                    fpreal32 *a0 =  new float[l*3];
+                    fpreal32 *te =  new float[l*3];
+                    fpreal32 *re =  (fpreal32 *)&handleP.value(start);
+            
+                    //  # Static scalars:
+                    //mu2 = mu*mu;  mu3 = mu*mu*mu;
+                    fpreal32 mu2 = mydelta*mydelta;
+                    fpreal32 mu3 = mu2*mydelta;
+          
+                    //a0 = y3 - y2;  
+                    //y3 = a0 - y0;    
+                    //a0 = y3 + y1;    
+                    //te = a0 * mu3
+                    VM_Math::sub(a0, y3, y2,  l);
+                    VM_Math::sub(y3, a0, y0,  l);
+                    VM_Math::add(a0, y3, y1,  l);
+                    VM_Math::mul(te, a0, mu3, l);
+
+                    //y3 = y0 - y1;
+                    //te = y3 - a0;           
+                    //re = re + te*mu2;                         
+                    VM_Math::sub(y3, y0, y1, l);
+                    VM_Math::sub(te, y3, a0, l); // ??? a moze negate(a0) i madd(y3, a0, 1)?
+                    VM_Math::madd(re, te, mu2, l);
+                   
+
+                    //a0 = y2 - y0;
+                    //te = a0*mu + y1;
+                    //re = re + te *1;
+                    VM_Math::sub(a0, y2, y0, l);
+                    VM_Math::scaleoffset(re, te, a0, l);
+                    VM_Math::madd(re, te, 1.0f, l);
+
+                    delete a0, te;
+                }
+                 else if (mySIMD == 1)
+                {
+                    UT_Vector3 p;
+                    int n = mynumPoints;
+                    fpreal32 pp[]= {0.0f, 0.0f, 0.0f};
+
                     for (GA_Offset i = start; i < end; ++i)
                     {
                         fpreal32 v0[] = {mypoints[3*i], mypoints[3*i+1], mypoints[3*i+2]};
@@ -274,6 +319,7 @@ public:
                         //PC2SOP::flip_space(p);
                         handleP.set(i, p);
                     }
+                   
                 //#else
                 // Standard loop:
                 }
@@ -308,13 +354,13 @@ private:
     float     mydelta;
     float     *mypoints;
     int       mynumPoints;
-    bool      mySIMD;
+    int       mySIMD;
 
 };
 
 void
 threaded_simd_cubic(const GA_Range &range, GU_Detail *gdp, float delta, 
-                    float *points, int numPoints, bool simd)
+                    float *points, int numPoints, int simd)
 {
     // Create a GA_SplittableRange from the original range
     GA_SplittableRange split_range = GA_SplittableRange(range);
@@ -337,7 +383,7 @@ main(int argc, char *argv[])
 
     
     // global settings.
-    int   steps  = 3;
+    int   steps  = 5;
     float sample = 1;
     float delta  = 0.5;
     bool  flip   = false;
@@ -523,7 +569,7 @@ main(int argc, char *argv[])
         t.start();
         for (int i = 0; i < frames; i++)
         {   
-            threaded_simd_cubic(range, &gdp, delta, points, numPoints, false);
+            threaded_simd_cubic(range, &gdp, delta, points, numPoints, 0);
         }
        
         cout << "Cubic multithread (HDK): " << t.current() / UT_Thread::getNumProcessors()  << endl;
@@ -536,10 +582,22 @@ main(int argc, char *argv[])
         t.start();
         for (int i = 0; i < frames; i++)
         {   
-            threaded_simd_cubic(range, &gdp, delta, points, numPoints, true);
+            threaded_simd_cubic(range, &gdp, delta, points, numPoints, 1);
         }
        
         cout << "Cubic multithread (own): " << t.current() / UT_Thread::getNumProcessors()  << endl;
+    }
+
+     /// Cubic multithead SIMD (own):    
+    {
+        const GA_Range range(gdp.getPointRange());
+        t.start();
+        for (int i = 0; i < frames; i++)
+        {   
+            threaded_simd_cubic(range, &gdp, delta, points, numPoints, 2);
+        }
+       
+        cout << "Cubic multithread SIMD: " << t.current() / UT_Thread::getNumProcessors()  << endl;
     }
 
 

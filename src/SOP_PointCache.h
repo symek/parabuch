@@ -216,8 +216,8 @@ public:
                 fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
                 for (GA_Offset i = start; i < end; ++i)
                 {
-                    fpreal32 v0[] = {mypoints[3*i], mypoints[3*i+1], mypoints[3*i+2]};
-                    fpreal32 v1[] = {mypoints[3*(i + n)], mypoints[3*(i + n)+1], mypoints[3*(i + n)+2]};
+                    fpreal32 v0[] = {mypoints[3*i],         mypoints[3*i+1],         mypoints[3*i+2]};
+                    fpreal32 v1[] = {mypoints[3*(i + n)],   mypoints[3*(i + n)+1],   mypoints[3*(i + n)+2]};
                     fpreal32 v2[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
                     fpreal32 v3[] = {mypoints[3*(i + n*2)], mypoints[3*(i + n*2)+1], mypoints[3*(i + n*2)+2]};
                     cubicInterpolate(pp[0], v0[0], v1[0], v2[0], v3[0], mydelta);
