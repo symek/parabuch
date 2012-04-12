@@ -438,7 +438,7 @@ main(int argc, char *argv[])
 
     //No interpolation:
     int numPoints = pc2->header->numPoints;
-    int frames    = 500; //pc2->header->numSamples;
+    int frames    = 1000; //pc2->header->numSamples;
 
  
     #if 1
@@ -572,7 +572,7 @@ main(int argc, char *argv[])
             }
         }
         
-         cout << "Cubic singlethread (HDK: " << t.current()  << endl;
+         cout << "Cubic singlethread (HDK): " << t.current()  << endl;
     }
 
 
