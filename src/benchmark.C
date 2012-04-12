@@ -298,7 +298,8 @@ public:
                     VM_Math::scaleoffset(re, te, a0, l);
                     VM_Math::madd(re, te, 1.0f, l);
 
-                    delete a0, te;
+                    delete a0;
+                    delete te;
                 }
                  else if (mySIMD == 1)
                 {
@@ -438,7 +439,7 @@ main(int argc, char *argv[])
 
     //No interpolation:
     int numPoints = pc2->header->numPoints;
-    int frames    = 1000; //pc2->header->numSamples;
+    int frames    = 2000; //pc2->header->numSamples;
 
  
     #if 1
@@ -506,7 +507,7 @@ main(int argc, char *argv[])
         cout << "Linear mulithread: " << t.current() / UT_Thread::getNumProcessors() << endl;
     }
 
-
+        
        UT_Thread::configureMaxThreads(1); 
       /// Linear single simd: 
     {
@@ -517,7 +518,7 @@ main(int argc, char *argv[])
             threaded_simd_linear(range, &gdp, delta, points, numPoints, true);
         }
        
-        cout << "Linear singlethread SIMD: " << t.current() / UT_Thread::getNumProcessors() << endl;
+        cout << "Linear singlethread SIMD: " << t.current() << endl;
     }
 
 
@@ -601,13 +602,13 @@ main(int argc, char *argv[])
             threaded_simd_cubic(range, &gdp, delta, points, numPoints, 1);
         }
        
-        cout << "Cubic singlethreaded (own): " << t.current() / UT_Thread::getNumProcessors()  << endl;
+        cout << "Cubic singlethreaded (own): " << t.current()  << endl;
     }
 
     
     
     /// Cubic multithead (own):    
-     UT_Thread::configureMaxThreads(0);
+     UT_Thread::configureMaxThreads(-1);
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
@@ -620,7 +621,7 @@ main(int argc, char *argv[])
     }
 
 
-       /// Cubic singlethread SIMD (own): 
+       /// Cubic singlethreaded SIMD (own): 
           UT_Thread::configureMaxThreads(1);   
     {
         const GA_Range range(gdp.getPointRange());
@@ -630,11 +631,11 @@ main(int argc, char *argv[])
             threaded_simd_cubic(range, &gdp, delta, points, numPoints, 2);
         }
        
-        cout << "Cubic singlethreaded SIMD: " << t.current() / UT_Thread::getNumProcessors()  << endl;
+        cout << "Cubic singlethreaded SIMD: " << t.current()  << endl;
     }
 
      /// Cubic multithead SIMD (own):    
-       UT_Thread::configureMaxThreads(0); 
+       UT_Thread::configureMaxThreads(-1); 
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
@@ -643,7 +644,7 @@ main(int argc, char *argv[])
             threaded_simd_cubic(range, &gdp, delta, points, numPoints, 2);
         }
        
-        cout << "Cubic multithread SIMD: " << t.current() / UT_Thread::getNumProcessors()  << endl;
+        cout << "Cubic multithreaded SIMD: " << t.current() / UT_Thread::getNumProcessors()  << endl;
     }
 
 
