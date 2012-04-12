@@ -211,7 +211,16 @@ threaded_simd_linear(const GA_Range &range, GU_Detail *gdp, float delta,
 {
     // Create a GA_SplittableRange from the original range
     GA_SplittableRange split_range = GA_SplittableRange(range);
-    UTparallelFor(split_range, op_InterpolateLinear(gdp, delta, points, numPoints, simd));
+    UTparallelForLightItems(split_range, op_InterpolateLinear(gdp, delta, points, numPoints, simd));
+}
+
+void
+single_simd_linear(const GA_Range &range, GU_Detail *gdp, float delta, 
+                    float *points, int numPoints, bool simd)
+{
+    // Create a GA_SplittableRange from the original range
+    GA_SplittableRange split_range = GA_SplittableRange(range);
+    UTparallelFor(split_range, op_InterpolateLinear(gdp, delta, points, numPoints, simd), 1, 10000000);
 }
 
 
@@ -365,10 +374,18 @@ threaded_simd_cubic(const GA_Range &range, GU_Detail *gdp, float delta,
 {
     // Create a GA_SplittableRange from the original range
     GA_SplittableRange split_range = GA_SplittableRange(range);
-    UTparallelFor(split_range, op_InterpolateCubic(gdp, delta, points, numPoints, simd));
+    UTparallelForLightItems(split_range, op_InterpolateCubic(gdp, delta, points, numPoints, simd));
 }
 
-
+void
+single_simd_cubic(const GA_Range &range, GU_Detail *gdp, float delta, 
+                    float *points, int numPoints, int simd)
+{
+    // Create a GA_SplittableRange from the original range
+    GA_SplittableRange split_range = GA_SplittableRange(range);
+   
+    UTparallelFor(split_range, op_InterpolateCubic(gdp, delta, points, numPoints, simd), 1, 10000000);
+}
 
 
 
@@ -508,14 +525,14 @@ main(int argc, char *argv[])
     }
 
         
-       UT_Thread::configureMaxThreads(1); 
+      // UT_Thread::configureMaxThreads(1); 
       /// Linear single simd: 
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
         for (int i = 0; i < frames; i++)
         {   
-            threaded_simd_linear(range, &gdp, delta, points, numPoints, true);
+            single_simd_linear(range, &gdp, delta, points, numPoints, true);
         }
        
         cout << "Linear singlethread SIMD: " << t.current() << endl;
@@ -523,7 +540,7 @@ main(int argc, char *argv[])
 
 
      /// Linear multithead simd: 
-     UT_Thread::configureMaxThreads(0); 
+     //UT_Thread::configureMaxThreads(0); 
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
@@ -593,13 +610,13 @@ main(int argc, char *argv[])
     }
 
       /// Cubic singlethread (own):    
-     UT_Thread::configureMaxThreads(1);
+    // UT_Thread::configureMaxThreads(1);
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
         for (int i = 0; i < frames; i++)
         {   
-            threaded_simd_cubic(range, &gdp, delta, points, numPoints, 1);
+            single_simd_cubic(range, &gdp, delta, points, numPoints, 1);
         }
        
         cout << "Cubic singlethreaded (own): " << t.current()  << endl;
@@ -608,7 +625,7 @@ main(int argc, char *argv[])
     
     
     /// Cubic multithead (own):    
-     UT_Thread::configureMaxThreads(-1);
+     //UT_Thread::configureMaxThreads(-1);
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
@@ -622,20 +639,20 @@ main(int argc, char *argv[])
 
 
        /// Cubic singlethreaded SIMD (own): 
-          UT_Thread::configureMaxThreads(1);   
+        //  UT_Thread::configureMaxThreads(1);   
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
         for (int i = 0; i < frames; i++)
         {   
-            threaded_simd_cubic(range, &gdp, delta, points, numPoints, 2);
+            single_simd_cubic(range, &gdp, delta, points, numPoints, 2);
         }
        
         cout << "Cubic singlethreaded SIMD: " << t.current()  << endl;
     }
 
      /// Cubic multithead SIMD (own):    
-       UT_Thread::configureMaxThreads(-1); 
+      // UT_Thread::configureMaxThreads(-1); 
     {
         const GA_Range range(gdp.getPointRange());
         t.start();
