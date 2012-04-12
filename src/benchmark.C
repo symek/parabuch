@@ -25,7 +25,8 @@ class timer {
 		}
 
 		double current() {
-			return difftime(clock(), begTime) / CLOCKS_PER_SEC;
+            //int threads = UT_Thread::getNumProcessors();
+			return (difftime(clock(), begTime) / CLOCKS_PER_SEC);// / (double) threads;
 		}
 
 		bool isTimeout(double seconds) {
@@ -361,7 +362,7 @@ main(int argc, char *argv[])
 
     //No interpolation:
     int numPoints = pc2->header->numPoints;
-    int frames    = 10000; //pc2->header->numSamples;
+    int frames    = 200; //pc2->header->numSamples;
 
  
     #if 1
@@ -426,7 +427,7 @@ main(int argc, char *argv[])
             threaded_simd_linear(range, &gdp, delta, points, numPoints, false);
         }
        
-        cout << "Linear mulithread: " << t.current()  << endl;
+        cout << "Linear mulithread: " << t.current() / UT_Thread::getNumProcessors() << endl;
     }
 
      /// Linear multithead:    
@@ -438,7 +439,7 @@ main(int argc, char *argv[])
             threaded_simd_linear(range, &gdp, delta, points, numPoints, true);
         }
        
-        cout << "Linear MT SIMD: " << t.current()  << endl;
+        cout << "Linear MT SIMD: " << t.current() / UT_Thread::getNumProcessors() << endl;
     }
 
     /// Cubic singlethread:
@@ -495,7 +496,7 @@ main(int argc, char *argv[])
             threaded_simd_cubic(range, &gdp, delta, points, numPoints);
         }
        
-        cout << "Cubic multithread: " << t.current()  << endl;
+        cout << "Cubic multithread: " << t.current() / UT_Thread::getNumProcessors()  << endl;
     }
 
 
