@@ -16,6 +16,22 @@
 //#include "SOP_PointCache.h"
 
 #include <time.h>
+class timer {
+	private:
+		double begTime;
+	public:
+		void start() {
+			begTime = clock();
+		}
+
+		double current() {
+			return difftime(clock(), begTime) / CLOCKS_PER_SEC;
+		}
+
+		bool isTimeout(double seconds) {
+			return seconds >= current();
+		}
+};
 
 
 /// PC2 format header:
@@ -142,6 +158,7 @@ public:
     void operator()(const GA_SplittableRange &range) const
     {
         GA_RWPageHandleV3   handleP(mygdp->getP());
+        //cout <<  "Thread: " << UT_Thread::getMySequentialThreadIndex() << endl;
         // Iterate over pages in the range
         for (GA_PageIterator pit = range.beginPages(); !pit.atEnd(); ++pit)
         {
@@ -206,15 +223,16 @@ public:
     // Take a SplittableRange (not a GA_Range)
     void operator()(const GA_SplittableRange &range) const
     {
+        //cout <<  "Thread: " << UT_Thread::getMySequentialThreadIndex() << endl;
         GA_RWPageHandleV3   handleP(mygdp->getP());
+        UT_Spline *spline  = new UT_Spline();
+        spline->setGlobalBasis(UT_SPLINE_CATMULL_ROM);
+        spline->setSize(3, 3); 
         // Iterate over pages in the range
         for (GA_PageIterator pit = range.beginPages(); !pit.atEnd(); ++pit)
         {
             GA_Offset start, end;
             handleP.setPage(*pit);
-            UT_Spline *spline  = new UT_Spline();
-            spline->setGlobalBasis(UT_SPLINE_CATMULL_ROM);
-            spline->setSize(3, 3); 
             // iterate over the elements in the page.
             for (GA_Iterator it(pit.begin()); it.blockAdvance(start, end); )
             {
@@ -245,8 +263,8 @@ public:
                 }
                 #endif
             }
-            delete spline;
         }
+        delete spline;
     }
 
 private:
@@ -288,9 +306,9 @@ main(int argc, char *argv[])
 
     
     // global settings.
-    int   steps  = 5;
+    int   steps  = 3;
     float sample = 1;
-    float delta  = 0;
+    float delta  = 0.5;
     bool  flip   = false;
 
 
@@ -298,50 +316,56 @@ main(int argc, char *argv[])
     GU_Detail gdp;
     GA_Detail::IOStatus status;
     status = gdp.load(argv[1]);
-    clock_t start = clock();
+    timer t;
+    t.start();
     if (!status.success())
     {
         cout << "Can't open file" << endl;
         return 0;
     }
-    clock_t end = clock();
-    cout << "Opening bgeo: " << diffclock(end, start) << endl;
+    cout << "Opening bgeo: " <<t.current() << endl;
 
 
 
     // Open PC2:
     float *points;
     UT_String filename = UT_String(argv[2]);
-    //start = clock();
+    t.start();
     PC2_File *pc2 = new PC2_File(&filename);
     if (!pc2->loadFile(&filename))
     {
         cout << "Can't open pc2" << endl;
         return 0;
     }
-    end  = clock();
-    cout << "Opening pc2: " << diffclock(end, start) << endl;
+   
+    cout << "Opening pc2: " <<t.current() << endl;
 
 
     // Loading array:
-    //start = clock();
-    points= new float[3*pc2->header->numPoints*steps];
+    t.start();
+    points= new float[3 * pc2->header->numPoints * steps];
+    cout << "Allocating array: " << t.current()<< endl;
+
+    t.start();
     if(!pc2->getPArray(sample, steps, points))
     {
         cout << "Can't load array" << endl;
         return 0;
     }
-    end  = clock();
-    cout << "Loading pc2: " <<diffclock(end, start)<< endl;
+   
+    cout << "Loading pc2: " << t.current()<< endl;
 
-    /////// Benchmark:
+
+
+    /////// Benchmark: //////////////////////////
+
     //No interpolation:
     int numPoints = pc2->header->numPoints;
-    int frames    = pc2->header->numSamples;
+    int frames    = 10000; //pc2->header->numSamples;
 
  
     #if 1
-    //start = clock();
+    t.start();
     for (int i = 0; i < frames; i++)
     {
         int ptnum = 0;
@@ -361,14 +385,14 @@ main(int argc, char *argv[])
         }
 
     }
-    end  = clock();
-    cout << "No interpolation: " << diffclock(end, start)  << endl;
+   
+    cout << "No interpolation: " <<t.current()  << endl;
     #endif
 
 
     #if 1
     /// Linear single thread:
-    //start  = clock();
+    t.start();
     //sample = sample -1;
     for (int i = 0; i < frames; i++)
     {
@@ -388,33 +412,33 @@ main(int argc, char *argv[])
             ptnum = SYSclamp(ptnum, 0, numPoints-1);
         }
     }
-    end  = clock();
-    cout << "Linear single thread: " <<diffclock(end, start) << endl;
+   
+    cout << "Linear single thread: " << t.current() << endl;
     #endif
 
    
     /// Linear multithead:    
     {
         const GA_Range range(gdp.getPointRange());   
-        //start  = clock();  
+        t.start();  
         for (int i = 0; i < frames; i++)
         {   
             threaded_simd_linear(range, &gdp, delta, points, numPoints, false);
         }
-        end  = clock();
-        cout << "Linear mulithread: " << diffclock(end, start)  << endl;
+       
+        cout << "Linear mulithread: " << t.current()  << endl;
     }
 
      /// Linear multithead:    
     {
         const GA_Range range(gdp.getPointRange());
-        //start  = clock();     
+        t.start();
         for (int i = 0; i < frames; i++)
         {   
             threaded_simd_linear(range, &gdp, delta, points, numPoints, true);
         }
-        end  = clock();
-        cout << "Linear MT SIMD: " << diffclock(end, start)  << endl;
+       
+        cout << "Linear MT SIMD: " << t.current()  << endl;
     }
 
     /// Cubic singlethread:
@@ -425,7 +449,7 @@ main(int argc, char *argv[])
         UT_Spline *spline = new UT_Spline();
         spline->setGlobalBasis(UT_SPLINE_CATMULL_ROM);
         spline->setSize(3, 3);
-        //start  = clock(); 
+        t.start(); 
         for (int i = 0; i < frames; i++)
         {   
             
@@ -454,8 +478,8 @@ main(int argc, char *argv[])
                 ptnum = SYSclamp(ptnum, 0, numPoints-1);
             }
         }
-         end  = clock();
-         cout << "Cubic single thread: " << diffclock(end, start)  << endl;
+        
+         cout << "Cubic single thread: " << t.current()  << endl;
     }
 
 
@@ -465,13 +489,13 @@ main(int argc, char *argv[])
       /// Cubic multithead:    
     {
         const GA_Range range(gdp.getPointRange());
-        //start  = clock();     
+        t.start();
         for (int i = 0; i < frames; i++)
         {   
             threaded_simd_cubic(range, &gdp, delta, points, numPoints);
         }
-        end  = clock();
-        cout << "Cubic multithread: " << diffclock(end, start)  << endl;
+       
+        cout << "Cubic multithread: " << t.current()  << endl;
     }
 
 
