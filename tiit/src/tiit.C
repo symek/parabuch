@@ -17,7 +17,7 @@
 #include <UT/UT_PtrArray.h>
 #include <PXL/PXL_Raster.h>
 #include <UT/UT_String.h>
-#include <UT/UT_Wavelet.h>
+//#include <UT/UT_Wavelet.h>
 
 // std cmath (to consider for isnan() and isinf())
 #include <cmath>
@@ -81,6 +81,8 @@ void usage()
 	cout << "\t -c file    compare wavelet sig of the image with a file." << endl;
 	cout << "\t -S         Suppress output (only minimal data sutable for parasing)." << endl;
 	cout << "\t -m         Print meta-data." << endl;
+    cout << "\t -L lut     LUT to be applied on input." << endl;
+    cout << "\t -o         Output file." << endl;
 
 }
 
@@ -203,7 +205,7 @@ void * printStats(const char *inputName, const char *plane_name, const int fixit
 	delete inputFile;
 	return myData;
 }
-
+/*
 const char *waveletSig(void *myData, float *weights, const int xsize, const int ysize)
 {
     float *pixels = (float*) myData;
@@ -225,7 +227,7 @@ const char *waveletSig(void *myData, float *weights, const int xsize, const int 
     return "wavelets";
 }
 
-
+*/
 
 
 int
@@ -241,21 +243,33 @@ main(int argc, char *argv[])
 	/// Read argumets and options:
 	CMD_Args args;
     args.initialize(argc, argv);
-    args.stripOptions("p:c:w:ihsfSm");
+    args.stripOptions("p:c:w:L:o:ihsfSm");
 
 	/// File we work on:/
 	const char *inputName = argv[argc-1];
+    const char *lut_file   = NULL;
 	//inputName.harden();
-	fstream fin(inputName);
-	if (!fin)
-	{
-		cerr << "Can't find: " << inputName << endl;
-		return 1;
-	}	
-	
+	//fstream fin(inputName);
+	//if (!fin)
+	//{
+	//	cerr << "Can't find: " << inputName << endl;
+	//	return 1;
+	//}
+
+	// Optional read parameters:
+	IMG_FileParms *parms = new IMG_FileParms();
+    if (args.found('L'))
+    {
+        lut_file = args.argp('L');
+        if (lut_file)
+             parms->applyLUT(lut_file, "C");
+    }
+
     /// At first we just open the file to read stat:
     IMG_File *inputFile = NULL;
-	inputFile = IMG_File::open(inputName);
+   
+    /// Read file:
+	inputFile = IMG_File::open(inputName, parms);
 	if (!inputFile)
     { 
 		cerr  << "Can't open: " << inputName << endl;
@@ -348,7 +362,16 @@ main(int argc, char *argv[])
 		cout << info.buffer()  << endl;
 	}
 
+    if (args.found('o'))
+    {
+        const char *outputName = NULL;
+        outputName = args.argp('o');
+        if (outputName)
+            inputFile->copyToFile(inputName, outputName, parms);
 
+    }
+
+    /*
     if (args.found('w'))
     {
         if (myData)
@@ -359,7 +382,7 @@ main(int argc, char *argv[])
         }
     }
 
-
+    */
 
 
 }
