@@ -44,13 +44,16 @@ protected:
     virtual OP_ERROR		 cookMySop(OP_Context &context);
 
 private:
-    void	getGroups(UT_String &str){ evalString(str, "group", 0, 0); }
-    float	AMP(float t)		{ return evalFloat("amp", 0, t); }
-    float	PHASE(float t)		{ return evalFloat("phase", 0, t); }
-    float	PERIOD(float t)		{ return evalFloat("period", 0, t); }
+    void	getGroups(UT_String &str)
+            { 
+                evalString(str, "group", 0, 0); 
+            }
+    float	EDGELENGTH(float t)		{ return evalFloat("edgelength", 0, t); }
+    float	PRIMAREA(float t)		{ return evalFloat("primarea", 0, t); }
+    float	VERBOSE(float t)		{ return evalInt("verbose", 0, t); }
 
     GU_DetailGroupPair	 myDetailGroupPair;
-    const GB_PointGroup	*myGroup;
+    const   GB_PrimitiveGroup	*myGroup;
 };
 } // End INTERSECT_RAY namespace
 
