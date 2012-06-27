@@ -127,20 +127,20 @@ SOP_IntersectRay::cookMySop(OP_Context &context)
         UT_AutoInterrupt progress("Checking for self-intersections...");
         const GEO_Primitive   *ppr;
         FOR_ALL_GROUP_PRIMITIVES(gdp, myGroup, ppr)
-     	//for (int i = 0; i < gdp->primitives().entries(); i++)
 	    {
              // Check if user requested abort
              if (progress.wasInterrupted())
                 break;
-            //ppr = gdp->primitives()(i);
-            // Rid off primitives smaller than primarea:
+
+            // Get rid off primitives smaller than primarea:
             if ( ppr->calcArea() < primarea )
                 continue;
 
             for (int j = 0; j < ppr->getVertexCount() - 1; j++)
             {
                 // Get data;
-                // TODO: This is extremally inefficent. 
+                // TODO: This is extremally inefficent.
+                // TODO: Why do we crash with uv vetrex attributes!? 
                 const GEO_Vertex ppv1 = ppr->getVertex(j);
                 const GEO_Vertex ppv2 = ppr->getVertex(j+1);
                 const GEO_Point *ppt1 = ppv1.getPt();
@@ -168,7 +168,7 @@ SOP_IntersectRay::cookMySop(OP_Context &context)
                         {
                             const GEO_Primitive *prim = hits[j].prim;
                             const GEO_PrimPoly  *poly = (const GEO_PrimPoly *) prim; //TODO: Prims only?
-                            // If points are not part of prims...:
+                            // We are interested only ff points are not part of prims...:
                             if (poly->find(*ppt1) == -1 && poly->find(*ppt2)== -1)
                             {
                                 if (verbose)
