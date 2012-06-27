@@ -101,8 +101,6 @@ SOP_IntersectRay::cookMySop(OP_Context &context)
      GU_RayFindType  itype     = GU_FIND_ALL;   
      GU_RayIntersect intersect = GU_RayIntersect(gdp);      
 
-
-
     // Profile:
     //Timer timer = Timer();
     //float rayhit_time = 0;
