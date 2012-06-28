@@ -43,9 +43,10 @@ static PRM_Name names[] = {
     PRM_Name("filename",	   "PC2 File"),
     PRM_Name("interpol",       "Interpolation"),
     PRM_Name("computeNormals", "Compute Normals"),
-    PRM_Name("pGroup",           "Primitive Group"),
-    PRM_Name("flip",            "Flip Space"),
-    PRM_Name("addrest",          "Add Rest"),
+    PRM_Name("pGroup",         "Primitive Group"),
+    PRM_Name("flip",           "Flip Space"),
+    PRM_Name("addrest",        "Add Rest"),
+    PRM_Name("relative",       "Relative Offset"),
 };
 
 
@@ -67,6 +68,7 @@ SOP_PointCache::myTemplateList[] = {
     PRM_Template(PRM_TOGGLE, 1, &names[2]),
     PRM_Template(PRM_TOGGLE, 1, &names[4]),
     PRM_Template(PRM_TOGGLE, 1, &names[5]),
+    PRM_Template(PRM_TOGGLE, 1, &names[6]),
     PRM_Template(),
 };
 
@@ -81,6 +83,7 @@ SOP_PointCache::SOP_PointCache(OP_Network *net, const char *name, OP_Operator *o
 {
     pc2            = NULL;
     points         = NULL;
+    points_zero    = NULL;
     dointerpolate  = 0;
     reallocate     = false;
 }
@@ -151,6 +154,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     int       flip;
     int       addrest;
     int       computeNormals;
+    int       relativeOffset;
     UT_Spline *spline = NULL;
     /// Info buffers
     char      info_buff[200];
@@ -172,6 +176,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     addrest        = ADDREST(t);
     dointerpolate  = INTERPOL(interpol_str, t);
     computeNormals = COMPUTENORMALS(t);
+    relativeOffset = RELATIVE(t);
     FILENAME(filename, t);
 
     /// Get frame. FIXME: This should be probably provided by an user.
@@ -251,23 +256,41 @@ SOP_PointCache::cookMySop(OP_Context &context)
             return error();
         }   
     }
-	
+
+    /// Additional array for relative offset pc2s:
+    if ((!points_zero && relativeOffset) || reallocate)
+    {
+        if (reallocate)
+            delete points_zero;
+        points_zero = new float[3*pc2->header->numPoints];
+
+        if (!points_zero)
+        {
+            addWarning(SOP_MESSAGE, "Can't allocate storage for relative offset.");
+            return error();
+        } 
+    }
+
 	/// Abandom if frame exceeds samples range.
 	/// In case of supersampling we switch limit to take
 	/// sampling rate into account. 
-	int frame_limit = (!dointerpolate) ? pc2->header->numSamples : \
-	(pc2->header->numSamples * pc2->header->sampleRate);
-	if ((frame > frame_limit) || (frame < pc2->header->startFrame))
+	float frame_limit = (!dointerpolate) ? (pc2->header->numSamples + pc2->header->startFrame) : \
+	((pc2->header->numSamples * pc2->header->sampleRate) + pc2->header->startFrame);
+
+	if ((frame < pc2->header->startFrame) || (frame > frame_limit))
 	{
-	    addWarning(SOP_MESSAGE, "Frame exceeds samples range from file.");
+        addWarning(SOP_MESSAGE, "Frame exceeds samples range from file.");
         return error();
 	}
-	
+
+    // FIXME? Should we take into account start frame shift:
+    frame -= pc2->header->startFrame;
+
 	/// Supersampling / Interpolation:
 	/// In case of cubic, we shift sample -1, and take 3 steps,
 	/// None and linear require 2 steps and sample == current == $F-1.
 	/// Delta will be used to drive interpolants (0,1). 
-	float sample    = (!dointerpolate) ? (frame-1) : (frame-1) * (1.0/pc2->header->sampleRate);
+	float sample    = (!dointerpolate) ? frame : frame * (1.0/pc2->header->sampleRate);
 	fpreal32 delta  = sample - SYSfloor(sample);
 	sample          = SYSfloor(sample);
 	
@@ -285,9 +308,9 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	
 	/// Don't deceive an user if no supersamples found in a file:
 	if (dointerpolate && pc2->header->sampleRate==1.0)
-	    addWarning(SOP_MESSAGE, "Sample rate is 1.0, excpect poor interpolation!");
+	    addWarning(SOP_MESSAGE, "Sample rate is 1.0, excpect poor interpolation.");
 	    
-	/// Having interpolation turned off and samples rate < 1.0 doesn't play nice eihter:
+	/// Having interpolation turned off while samples rates < 1.0 doesn't play nice eihter:
 	if (!dointerpolate && pc2->header->sampleRate<1.0)
 	    addWarning(SOP_MESSAGE, "No interpolation selected. Supersampling will cause animation longer (frames == samples)");
 	
@@ -297,6 +320,17 @@ SOP_PointCache::cookMySop(OP_Context &context)
         addWarning(SOP_MESSAGE, "Can't load points[] from file.");
         return error();
     }
+
+    //FIXME: This is temporary
+    if (relativeOffset)
+    {
+        if (!pc2->getPArray((int) 0, 1, points_zero))
+         {
+            addWarning(SOP_MESSAGE, "Can't load zero frame position from file.");
+            return error();
+        }
+    }
+
     
     /// Here we determine which groups we have to work on.  We only
     ///	handle point groups.
@@ -310,9 +344,25 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	        p = ppt->getPos3();
 	        if (dointerpolate == PC2_NONE)
 	        {
-                p.x() = points[3*ptnum];
-                p.y() = points[3*ptnum+1];
-                p.z() = points[3*ptnum+2];
+                //FIXME: This is complete workaround/proof of concept
+                // I have to rethink whole loop.
+                if (relativeOffset)
+                {
+                    p.x() -= points_zero[3*ptnum];
+                    p.y() -= points_zero[3*ptnum+2];
+                    p.z() -= -points_zero[3*ptnum+1];
+
+                    p.x() += points[3*ptnum];
+                    p.y() += points[3*ptnum+2];
+                    p.z() += -points[3*ptnum+1];
+                }
+                else
+                {
+                    p.x() = points[3*ptnum];
+                    p.y() = points[3*ptnum+1];
+                    p.z() = points[3*ptnum+2];
+                }
+                
             }
             else if (dointerpolate == PC2_LINEAR)
             {

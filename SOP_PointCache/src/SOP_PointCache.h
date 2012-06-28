@@ -87,6 +87,7 @@ private:
     int     COMPUTENORMALS(float t)  { return evalInt("computeNormals", 0, t);}
     int     FLIP(float t)            { return evalInt("flip", 0, t);}
     int     ADDREST(float t)         { return evalInt("addrest", 0, t);}
+    int     RELATIVE(float t)         { return evalInt("relative", 0, t);}
     
     /// I don't know how to make int based list...
     int INTERPOL(UT_String &str, float t)
@@ -103,6 +104,7 @@ private:
     /// by the method "cookInputGroups".
     const GA_PointGroup	*myGroup;
     float               *points;
+    float               *points_zero;
     int                 dointerpolate;
     bool                reallocate;
     PC2_File            *pc2;
