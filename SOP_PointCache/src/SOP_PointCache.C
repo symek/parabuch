@@ -331,7 +331,6 @@ SOP_PointCache::cookMySop(OP_Context &context)
         }
     }
 
-    
     /// Here we determine which groups we have to work on.  We only
     ///	handle point groups.
     if (error() < UT_ERROR_ABORT && cookInputGroups(context) < UT_ERROR_ABORT)
