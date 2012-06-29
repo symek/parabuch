@@ -51,6 +51,7 @@ private:
     float	EDGELENGTH(float t)		{ return evalFloat("edgelength", 0, t); }
     float	PRIMAREA(float t)		{ return evalFloat("primarea", 0, t); }
     float	VERBOSE(float t)		{ return evalInt("verbose", 0, t); }
+    float	GENERATEPOINTS(float t)		{ return evalInt("generatepoints", 0, t); }
 
     GU_DetailGroupPair	 myDetailGroupPair;
     const   GB_PrimitiveGroup	*myGroup;

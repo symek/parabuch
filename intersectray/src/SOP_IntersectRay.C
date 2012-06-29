@@ -33,9 +33,10 @@ newSopOperator(OP_OperatorTable *table)
 }
 
 static PRM_Name        names[] = {
-    PRM_Name("edgelength",	"Min Edge Length"),
-    PRM_Name("primarea",	"Min Prim Area"),
+    PRM_Name("edgelength",	"Minimum Edge Length"),
+    PRM_Name("primarea",	"Minimun Prim Area"),
     PRM_Name("verbose",	    "Verbose"),
+    PRM_Name("generatepoints","Generate Points"),
 };
 
 static PRM_Default  threashold_01(0.1f);
@@ -46,8 +47,9 @@ PRM_Template
 SOP_IntersectRay::myTemplateList[] = {
     PRM_Template(PRM_STRING,    1, &PRMgroupName, &group_all, &SOP_Node::primGroupMenu),
     PRM_Template(PRM_FLT,	 1, &names[0], &threashold_01),
-    PRM_Template(PRM_FLT,	 1, &names[1], &threashold_02), //PRMzeroDefaults
+    PRM_Template(PRM_FLT,	 1, &names[1], &threashold_02),
     PRM_Template(PRM_TOGGLE, 1, &names[2], 0),
+    PRM_Template(PRM_TOGGLE, 1, &names[3], 0),
     PRM_Template(),
 };
 
@@ -87,25 +89,30 @@ OP_ERROR
 SOP_IntersectRay::cookMySop(OP_Context &context)
 {
     double t;
-    float  edgelength, primarea;
+    float  edgelength, primarea, generatepoints;
     int    verbose;
 
+    // We optionally add points in self-penetration places:
+    GB_PointGroup          *hitPointsGroup;
+    UT_RefArray<UT_Vector3> hitPoints;
+
     if (lockInputs(context) >= UT_ERROR_ABORT)
-	return error();
+	    return error();
 
     t = context.getTime();
     duplicatePointSource(0, context);
 
-    edgelength = EDGELENGTH(t);
-    primarea   = PRIMAREA(t);
-    verbose    = VERBOSE(t);
+    edgelength     = EDGELENGTH(t);
+    primarea       = PRIMAREA(t);
+    verbose        = VERBOSE(t);
+    generatepoints = GENERATEPOINTS(t);
 
     // Normals:
     GEO_AttributeHandle  nH;
     GEO_AttributeHandle  cdH;
-    UT_Vector3           n;         
-    nH  = gdp->getAttribute(GEO_POINT_DICT, "N");
-    cdH = gdp->getAttribute(GEO_POINT_DICT, "Cd");
+    nH   = gdp->getAttribute(GEO_POINT_DICT, "N");
+    cdH  = gdp->getAttribute(GEO_POINT_DICT, "Cd");
+   
 
     // RayInfo parms:
     //float max = 1E18f; // Max specified by edge length...
@@ -132,7 +139,7 @@ SOP_IntersectRay::cookMySop(OP_Context &context)
              if (progress.wasInterrupted())
                 break;
 
-            // Get rid off primitives smaller than primarea:
+            // Get rid of primitives smaller than primarea:
             if ( ppr->calcArea() < primarea )
                 continue;
 
@@ -152,7 +159,7 @@ SOP_IntersectRay::cookMySop(OP_Context &context)
 
                 // Ray direction:
                 p2   = p2 - p1;
-                // Get rid off edges shorter than edgelength:
+                // Get rid of edges shorter than edgelength:
                 if (p2.length() < edgelength)
                     continue;
                 // hit info with max distance equal edge length:
@@ -161,29 +168,53 @@ SOP_IntersectRay::cookMySop(OP_Context &context)
 
                 // Send ray:
                 if (intersect.sendRay(p1, p2, hitinfo))
-                {
+                {  
+                    UT_RefArray<GU_RayInfoHit> hits = *(hitinfo.myHitList);
+                    for(int j = 0; j < hits.entries(); j++)
                     {
-                        UT_RefArray<GU_RayInfoHit> hits = *(hitinfo.myHitList);
-                        for(int j = 0; j < hits.entries(); j++)
+                        const GEO_Primitive *prim = hits[j].prim;
+                        const GEO_PrimPoly  *poly = (const GEO_PrimPoly *) prim; //TODO: Prims only?
+                        // We are interested only ff points are not part of prims...:
+                        if (poly->find(*ppt1) == -1 && poly->find(*ppt2)== -1)
                         {
-                            const GEO_Primitive *prim = hits[j].prim;
-                            const GEO_PrimPoly  *poly = (const GEO_PrimPoly *) prim; //TODO: Prims only?
-                            // We are interested only ff points are not part of prims...:
-                            if (poly->find(*ppt1) == -1 && poly->find(*ppt2)== -1)
-                            {
-                                if (verbose)
-                                    printf("Edge: %i-%i intersects with prim:%d \n",ppt1->getNum(), ppt2->getNum(), prim->getNum());
+                            if (verbose)
+                                printf("Edge: %i-%i intersects with prim:%d \n",ppt1->getNum(), ppt2->getNum(), prim->getNum());
 
-                                cdH.setElement(ppt1);
-                                cdH.setV3(UT_Vector3(1.0, 0.0, 0.0));
-                                cdH.setElement(ppt2);
-                                cdH.setV3(UT_Vector3(1.0, 0.0, 0.0));
+                            // Save hit position as points:
+                            if (generatepoints)
+                            {
+                                UT_Vector4 pos;
+                                float u = hits[j].u; 
+                                float v = hits[j].v;
+                                if (!prim->evaluateInteriorPoint(pos, u, v))
+                                    hitPoints.append(pos);
                             }
+
+                            // TODO: Should I indicate penetration with red color on both ends of edge?:
+                            cdH.setElement(ppt1);
+                            cdH.setV3(UT_Vector3(1.0, 0.0, 0.0));
+                            cdH.setElement(ppt2);
+                            cdH.setV3(UT_Vector3(1.0, 0.0, 0.0));
                         }
+                        
                     }
                 }
             }
 	    } 
+     
+   
+    if (generatepoints)
+    {
+        hitPointsGroup = gdp->newPointGroup("__self_penetrate", false);
+        for (int i = 0; i < hitPoints.entries(); i++)
+        {
+            GEO_Point *point;
+            point = gdp->appendPoint();
+            hitPointsGroup->add(point);
+            point->setPos(hitPoints(i));
+        }
+    }
+    
     }
 
     gdp->notifyCache(GU_CACHE_ALL);
