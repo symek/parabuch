@@ -7,7 +7,7 @@ Target := OGL_preview
 # List of source files, separated by spaces
 Sources := OGL_preview.cpp
 # Path to Irrlicht directory, should contain include/ and lib/
-IrrlichtHome := /STUDIO/dev/irrlicht-1.7.3
+IrrlichtHome := $(IRRLICHT_HOME)
 # Path for the executable. Note that Irrlicht.dll should usually also be there for win32 systems
 BinPath = ../bin/
 
