@@ -207,6 +207,7 @@ int main(int argc, char *argv[])
 	ISceneManager* smgr     = device->getSceneManager();
 	IGUIEnvironment* guienv = device->getGUIEnvironment();
     const u32 max_prims     = driver -> getMaximalPrimitiveCount();
+    int nv;
 
 
      // Create meshes:
@@ -215,42 +216,35 @@ int main(int argc, char *argv[])
     for (itr = geos.begin(); itr != geos.end(); ++itr)
     {
         // Load in obj from file:
-        SAnimatedMesh* mesh;    
-        mesh = (SAnimatedMesh*)smgr->getMesh((*itr).data());
+        IAnimatedMesh* mesh;    
+        mesh = smgr->getMesh((*itr).data());
 	    if (mesh)
         {   
-            // Get to te mesh buffer, create and append new ones:
-            std::cout << "Meshes:" << mesh->Meshes.size() << std::endl;
-            SMesh *geo_frame = 0;
-            SMeshBuffer *geo_buff = 0;
-            geo_frame = (SMesh*) mesh->Meshes[0];
-            std::cout << "Buffers in geo_frame: " << geo_frame->getMeshBufferCount()  << std::endl;
-            //geo_frame->getMeshBufferCount()
-            for (int b = 0; b < 1; b++)
+            int nbuffers = mesh->getMeshBufferCount();
+            for (int b = 0; b < nbuffers; b++)
             {
-                geo_buff  = (SMeshBuffer*) geo_frame->MeshBuffers[2];            
-                //std::cout << "Vertices in geo_buffer: "<< geo_buff->getVertexCount() << std::endl;
-                for (int i = 0; i < 1; i++)
+                // FIXME: Iteracja po klatkach, potem po grupach!
+                SMesh *smesh = new SMesh;
+                int npoints = mesh->getMeshBuffer(b)->getVertexCount();
+                for (int i = 0; i < 120; i++)
                 {
-                    SMeshBuffer  *new_buff = new SMeshBuffer();
-                    new_buff->Vertices.set_used(geo_buff->getVertexCount());
-                    // Set position per vertex:
-                    for (int j = 0; j < geo_buff->getVertexCount(); j++)
-                    {
-                        vector3df pos = geo_buff->getPosition(j);
-                        pos = pos + (pos/10.0);
-                        std::cout << "Vertex: " << j << ", index: " << geo_buff->getIndices()[j] << ": " << pos.X << ", " << pos.Y << ", " << pos.Z << ", " << std::endl;
-                        S3DVertex& v  = new_buff->Vertices[j];
-                        v.Pos.set(pos);
-                    }
-                    //geo_frame->MeshBuffers.push_back(new_buff);
+                    IMeshBuffer *buffer = new SMeshBuffer;
+                    IMeshBuffer *source = mesh->getMeshBuffer(b);
+                    nv = source->getVertexCount();
                    
+                    buffer->append((void *)source->getVertices(), source->getVertexCount(), source->getIndices(), source->getIndexCount());
+                    std::cout << "Adding buffer : " << i << std::endl;
+                    for(int v = 0; v < npoints; v++)
+                        buffer->getPosition(v) *= sin((float)i/20.0)*10;                    
+                     smesh->addMeshBuffer(buffer);
                 }
+                ((SAnimatedMesh*)mesh)->addMesh(smesh);
             }
-            mesh->recalculateBoundingBox();
-            mesh->setDirty();
-            std::cout << "Bufers count:" << mesh->getMeshBufferCount() << std::endl;
+
+            std::cout << "Last vertex number : " << nv << std::endl; 
         	node = smgr->addAnimatedMeshSceneNode(mesh);
+            std::cout << "Buffers: " << mesh->getMeshBufferCount() << std::endl;
+            std::cout << "Frames: " << mesh->getFrameCount() << std::endl;
         }
     }
 
@@ -259,15 +253,15 @@ int main(int argc, char *argv[])
     ICameraSceneNode *camera = smgr->addCameraSceneNodeMaya(node, -100, 200, 100, -1, true);
     //ICameraSceneNode *camera = smgr->addCameraSceneNodeFPS(0, 1, 1);
     //ICameraSceneNode *camera = smgr->addCameraSceneNode(0, vector3df(0,0,0), vector3df(0,0,0), true);
-    camera->bindTargetAndRotation(true);
+    //camera->bindTargetAndRotation(true);
     //camera->setNearValue(0.1f);
     //camera->setNearValue(1000.0f);
     //camera->setInputReceiverEnabled(0);
     //camera->setPosition(core::vector3df(json_camera.tz[0], json_camera.ty[0], json_camera.tx[0]));
      // camera->setPosition(core::vector3df(,2,123));
     //camera->setRotation(core::vector3df(json_camera.rx[0], json_camera.ry[0], json_camera.rz[0]));
-    float fov = 2 * atan( (24.0/2.0) / 40.0 );
-    camera->setFOV(fov);
+    //float fov = 2 * atan( (24.0/2.0) / 40.0 );
+    //camera->setFOV(fov);
     //smgr->setActiveCamera(camera);
 
 
@@ -298,8 +292,8 @@ int main(int argc, char *argv[])
 		driver->beginScene(true, true, SColor(110,110,110,110));
 		smgr->drawAll();
 		guienv->drawAll();
-		driver->endScene();
         delayFPS.delay();
+		driver->endScene();      
 	}
 
     // Ending up:
