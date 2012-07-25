@@ -1,48 +1,65 @@
+// HDK:
+#include <CMD/CMD_Args.h>
 #include <IMG/IMG_DeepShadow.h>
-#include <UT/UT_DMatrix4.h>
-#include <UT/UT_DMatrix3.h>
-#include <UT/UT_Assert.h>
-#include <UT/UT_WorkArgs.h>
-#include <UT/UT_String.h>
 #include <GU/GU_Detail.h>
 #include <UT/UT_BoundingBox.h>
-
 #include <SYS/SYS_Math.h>
 #include <UT/UT_PointGrid.h>
 #include <GU/GU_Detail.h>
-#include <UT/UT_Filter.h>
-#include <IMG/IMG_File.h>
-#include <TIL/TIL_TextureMap.h>
-#include <TIL/TIL_Raster.h>
-#include <TIL/TIL_Defines.h>
-#include <IMG/IMG_FileTTMap.h>
-#include <SYS/SYS_Math.h>
-#include <UT/UT_LatinSampler.h>
-#include <UT/UT_MTwister.h>
 
+// Own:
+#include "pointgrid.h"
 
-int
-main()
+static void
+usage(const char *me)
 {
-    //int size  = 1;
-    int res   = 256;
-    const char *dsm_file    = "./../tmp/1.rat";
-    const char *geo_file    = "./../tmp/1.bgeo";
+    cerr << "Usage: " << me << " -[r res] sourcefile.bgeo destfile.rat\n";
+    cerr << "Converts a geometry file (only points) into deep camera map." << endl;
+    cerr << "DCM can be open in VEX in tiled fashon, making heavy point clouds" << endl;
+    cerr << "fast on load, and efficient for RAM." << endl;
+    cerr << "\t-r 256 - Resolution of a grid (cubical) anything between 16 and 512 should work." << endl;
+    cerr << "\t         Check out for an avarage points per voxel occupation in output." << endl;
+    cerr << "\t-v     - Verbose output." << endl;
+}
 
+int 
+main(int argc, char *argv[])
+{
+    
+    // Init:   
+    CMD_Args args;
+    args.initialize(argc, argv);
+    args.stripOptions("r:v");
+    if (args.argc() < 3)
+    {
+        usage(argv[0]);
+        return 1;
+    }
+
+    // Options:
+    int res     = 256;
+    int verbose = 0;
+    if(args.found('r')) res     = atoi(args.argp('r'));       
+    if(args.found('v')) verbose = 1;
+    UT_String dcm_file, gdp_file;
+    gdp_file.harden(argv[argc-2]);
+    dcm_file.harden(argv[argc-1]);
+    
     #if 1
     // Open GDP with samples:
     GU_Detail gdp;
     UT_BoundingBox bbox;
-    if (!gdp.load(geo_file, 0).success())
+    if (!gdp.load(gdp_file, 0).success())
     {
-        cout << "Cant open " << geo_file << endl;
+        cerr << "Cant open " << gdp_file << endl;
         return 1;
     }
-    
-    int range =  gdp.getNumPoints();
-    // Points:
+   
+    // Points arrays and bbox details: 
+    gdp.getBBox(&bbox);
+    int range = gdp.getNumPoints();  
     UT_Vector3Array         positions(range);
-    UT_ValArray<int>        indexes(range);
+    UT_ValArray<int>        indices(range);
     
     const GEO_Point *ppt;
     const GEO_PointList plist = gdp.points();
@@ -51,40 +68,34 @@ main()
         ppt = plist(i);
         UT_Vector3 pos = ppt->getPos3();
         positions.append(pos);
-        indexes.append(i);
+        indices.append(i);
     }
 
-    // Verbose:
-    cout << "Positions: " <<  positions.entries() << endl;
+    if (verbose)
+        cout << "Points in gdp      : " <<  positions.entries() << endl;
 
     // Point Grid structures/objects:
-    typedef  UT_PointGridVector3ArrayAccessor<int, int> UT_Vector3Point;
-    typedef  UT_PointGrid<UT_Vector3Point>::queuetype UT_Vector3PointQueue;
-    UT_Vector3Point accessor(positions, indexes);
+    UT_Vector3Point accessor(positions, indices);
     UT_PointGrid<UT_Vector3Point> pointgrid(accessor);
 
-    // Build a grid
+    // Can we build it?
     if (!pointgrid.canBuild(res, res, res))
     {
         cout << "Can't build the grid!" << endl; 
         return 1;
     }
-    cout << "Gridpoint resoltion: " << res << "x" << res << "x" << res << endl;
-    //const UT_Vector3 bounds(size, size, size);
-    gdp.getBBox(&bbox);
-    cout << "BBox size  : " << bbox.size().x() << ", " << bbox.size().y() << ", " << bbox.size().z() << endl;
-    cout << "BBox center: " << bbox.center().x() << ", " << bbox.center().y() << ", " << bbox.center().z() << endl;
+    // Build it:
     pointgrid.build(bbox.minvec(), bbox.size(), res, res, res);
 
-    // Grid tests:
-    cout << "Pointgrid mem size: "  << pointgrid.getMemoryUsage() << endl;
-    cout << "Voxel size is: "       << pointgrid.getVoxelSize() << endl;
-    cout << "Voxel 0 position is: " << accessor.getPos(0) << endl;
-    cout << "Total points in grid: "<< pointgrid.entries() << endl;
-    int ix, iy, iz;
-    UT_Vector3 p(bbox.minvec());
-    pointgrid.posToIndex(p, ix, iy, iz);
-    cout << "At position (" << p << ")  index is: " << ix << ", " << iy << ", " << iz << endl;
+    if (verbose)
+    {
+        cout << "Point grid res     : " << res << "x" << res << "x" << res << endl;
+        cout << "Bounding box size  : " << bbox.size().x() << ", " << bbox.size().y() << ", " << bbox.size().z() << endl;
+        cout << "Bounding box center: " << bbox.center().x() << ", " << bbox.center().y() << ", " << bbox.center().z() << endl;
+        cout << "Pointgrid mem size : " << pointgrid.getMemoryUsage() << endl;
+        cout << "Voxel size is      : " << pointgrid.getVoxelSize() << endl;
+        cout << "Total grid points  : " << pointgrid.entries() << endl;
+    }
     #endif
 
     // Open rat (our random access, variable array length storage):
@@ -93,64 +104,36 @@ main()
     dsm.setOption("zbias", "0.05");
     dsm.setOption("depth_mode", "nearest");
     dsm.setOption("depth_interp", "discrete");
-
-    dsm.open(dsm_file, res*res, res);
-    // Store bounding box for computing position->voxel:
+    dsm.open(dcm_file, res*res, res);
     dsm.getTBFOptions()->setOptionV3("bbox:min" , bbox.minvec());
     dsm.getTBFOptions()->setOptionV3("bbox:max" , bbox.maxvec()); 
     
-    cout << "Deep map opened with res: " << res*res << "x" << res << endl;
-
-
-    
+    if (verbose)
+        cout << "DCM created res    : " << res*res << "x" << res << endl;
       
     #if 1
-    // Query the grid toolset:
-    UT_Vector3PointQueue *queue;
-    queue = pointgrid.createQueue();
-    UT_PointGridIterator<UT_Vector3Point> iter;
-
     // db_* debug variables...
     int db_index = 0;
     int db_uindex = 0;
     int db_av_iter = 0;
 
     // Put point into deep pixels:
-    for (int z = 0; z < res; z++)
+    Locker locker;
+    Timer timer;
+    timer.start();
+    parallel_fillDCM(res, &dsm, &pointgrid, &positions, &locker);
+    cout <<     "Creation time      : " << timer.current() << endl;
+    if (verbose)
     {
-        for (int y = 0; y < res; y++)
-        {
-            for (int x = 0; x < res; x++)
-            {
-                iter = pointgrid.getKeysAt(x, y, z, *queue);
-                if (iter.entries() != 0)
-                {
-                    db_av_iter += iter.entries();
-                    int _z = z*res;
-                    dsm.pixelStart(_z + x, y);
-                    float zdepth = 0;
-                    for (;!iter.atEnd(); iter.advance())
-                    {
-                        int idx = iter.getValue();                        
-                        UT_Vector3 pos = positions(idx);
-                        float posf[3]; posf[0] = pos.x(); 
-                        posf[1] = pos.y(); posf[2] = pos.z();
-                        dsm.pixelWriteOrdered(0.1*zdepth, posf, 3);
-                        zdepth++;
-                    }
-                    dsm.pixelClose();
-                    db_uindex++;
-                }
-                db_index++;               
-            }        
-        }
+        cout << "Total voxels       : " << db_index  << endl;
+        cout << "Written voxel      : " << db_uindex << endl;
+        cout << "Points per voxel   : " << (float)db_av_iter / db_uindex << endl;
     }
-
-    cout << "Iterated over: " << db_index << " voxels.  Should be: " << res*res*res << endl;
-    cout << "From which " << db_uindex << " were writen to." << endl;
-    cout << "Avarage occupation: " << (float)db_av_iter / db_uindex << " per used voxel." << endl;
+    timer.start();
     dsm.close();
-    cout << "Deep map closed." << endl;
+    cout <<     "Saving time        : " << timer.current() << endl;
+    if (verbose)
+        cout << "Deep map closed." << endl;
     return 0;
     #endif
 }
