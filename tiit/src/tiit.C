@@ -24,7 +24,7 @@
 #include<fstream>
 
 // Hash sha-1:
-#include <openssl/sha.h>
+// #include <openssl/sha.h>
 
 // std:
 #include <string.h>
@@ -77,11 +77,13 @@ void usage()
 	cout << "\t -s         print statistics." << endl;
 	cout << "\t -f         fix NaNs and Infs if exist." << endl;
 	cout << "\t -p plane   replace working plane (default 'C')." << endl;
-	cout << "\t -w         print image wavelet signature." << endl;
-	cout << "\t -c file    compare wavelet sig of the image with a file." << endl;
-	cout << "\t -S         Suppress output (only minimal data sutable for parasing)." << endl;
+	//cout << "\t -w         print image wavelet signature." << endl;
+	//cout << "\t -c file    compare wavelet sig of the image with a file." << endl;
+	//cout << "\t -S         Suppress output (only minimal data sutable for parasing)." << endl;
 	cout << "\t -m         Print meta-data." << endl;
     cout << "\t -L lut     LUT to be applied on input." << endl;
+    cout << "\t -g 2.2     Apply gamma on input." << endl;
+    cout << "\t -b 16      Convert input bitdepth (1: 8bit, 2: 16bit, 4: 32bit, 16: half, 32: float)." << endl;
     cout << "\t -o         Output file." << endl;
 
 }
@@ -98,6 +100,21 @@ const char * getDataTypeName(const int type)
 	}
 	return typeName;
 }
+
+IMG_DataType getDataType(const int type)
+{
+    switch(type)
+    {
+        case 1:  return IMG_INT8;
+        case 2:  return IMG_INT16;
+        case 4:  return IMG_INT32;
+        case 16: return IMG_HALF;
+        case 32: return IMG_FLOAT;
+    }
+    return IMG_DT_ANY;
+}
+
+
 
 /* Prints statistics*/
 void printBasicInfo(IMG_File *file, CMD_Args *args)
@@ -157,6 +174,12 @@ void * printStats(const char *inputName, const char *plane_name, const int fixit
     UT_PtrArray<PXL_Raster *> images;
     IMG_File *inputFile  = IMG_File::open(inputName, parms);
     bool loaded          = inputFile->readImages(images);
+    if (!loaded)
+    {
+        cerr << "Can't open " << inputName << endl;
+        return NULL;
+    }
+        
     const IMG_Stat &stat = inputFile->getStat();
     int px               = stat.getPlaneIndex(plane_name);
     float min, max, avr, avg, avb;
@@ -243,7 +266,7 @@ main(int argc, char *argv[])
 	/// Read argumets and options:
 	CMD_Args args;
     args.initialize(argc, argv);
-    args.stripOptions("p:c:w:L:o:ihsfSm");
+    args.stripOptions("p:c:w:L:o:ihsfSmg:b:");
 
 	/// File we work on:/
 	const char *inputName = argv[argc-1];
@@ -257,12 +280,25 @@ main(int argc, char *argv[])
 	//}
 
 	// Optional read parameters:
+    //LUT:
 	IMG_FileParms *parms = new IMG_FileParms();
     if (args.found('L'))
     {
         lut_file = args.argp('L');
         if (lut_file)
              parms->applyLUT(lut_file, "C");
+    }
+    // Gamma:
+    if (args.found('g'))
+    {
+        const char *gamma = args.argp('g');
+        parms->applyGamma(atof(gamma), "C");
+    }
+    // Bit depth:
+    if (args.found('b'))
+    {
+        const char *bitdepth = args.argp('b');
+        parms->setDataType(getDataType(atoi(bitdepth)));
     }
 
     /// At first we just open the file to read stat:
@@ -327,6 +363,7 @@ main(int argc, char *argv[])
 	}
 
 	/// Sha-1 hash generation 
+    /*
 	if (args.found('h'))
 	{
 		if (myData)
@@ -343,7 +380,7 @@ main(int argc, char *argv[])
 		{
 		    cerr << "Ups... No sha-1!" << endl;
 		}
-	}
+	}*/
 
 	/// Print statistics and optionally fix nans/infs: 
 	/// FIXME: fix doesn't work yet.
