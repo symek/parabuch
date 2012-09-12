@@ -93,10 +93,11 @@ const char * getDataTypeName(const int type)
 	const char * typeName = "";
 	switch(type)
 	{
-		case 8: typeName = "32float"; break;
+		case 8:  typeName = "32float"; break;
 		case 16: typeName = "16float"; break;
-		case 1: typeName = "8Int"; break;
-		case 2: typeName = "16Int"; break;
+		case 1:  typeName = "8Int";    break;
+		case 2:  typeName = "16Int";   break;
+        case 4:  typeName = "32Int";   break;
 	}
 	return typeName;
 }
