@@ -87,7 +87,11 @@ private:
     int     COMPUTENORMALS(float t)  { return evalInt("computeNormals", 0, t);}
     int     FLIP(float t)            { return evalInt("flip", 0, t);}
     int     ADDREST(float t)         { return evalInt("addrest", 0, t);}
-    int     RELATIVE(float t)         { return evalInt("relative", 0, t);}
+    int     RELATIVE(float t)        { return evalInt("relative", 0, t);}
+    void    SETINTERPOL(UT_String &v, float t) 
+        { 
+            setString(v, CH_STRING_LITERAL, "interpol", 0, t);
+        }
     
     /// I don't know how to make int based list...
     int INTERPOL(UT_String &str, float t)

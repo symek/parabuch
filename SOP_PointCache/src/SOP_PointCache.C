@@ -159,6 +159,8 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Info buffers
     char      info_buff[200];
     const char *info;
+    /// This indicates 
+    int       firstRead = 0;
 
     /// Make time depend:
     OP_Node::flags().timeDep = 1;
@@ -209,6 +211,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     if (!pc2) 
     {
         pc2 = new PC2_File(&filename);
+        firstRead = 1;
         if (!pc2->loadFile(&filename))
         {  
             addWarning(SOP_ERR_FILEGEO, "Can't open this file.");
@@ -226,7 +229,8 @@ SOP_PointCache::cookMySop(OP_Context &context)
         {
             addWarning(SOP_ERR_FILEGEO, "Can't open this file.");
             return error();
-        }  
+        }
+        firstRead = 1;  
     }
     
 	/// Lets give the user some information:
@@ -237,6 +241,16 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	/// Is it ugly?
 	info = &info_buff[0];
 	addMessage(SOP_MESSAGE, info);
+
+    /// Force linear interpolation if supersampling is present in a file. 
+    /// This was requested by TDs to aviod accidental 'None' value for supersampled
+    /// animations causing wrong animation length.
+    if (dointerpolate == 0 && pc2->header->sampleRate < 1.0f && firstRead)
+    {
+        dointerpolate = 1;
+        UT_String linear = UT_String("1");
+        SETINTERPOL(linear, (float)t);
+    }
 	
 	/// Allocte points' position array, then reallocate in case file changed
     /// Also adjust time steps, i.e.: one step for no interpolation, two for linear,
