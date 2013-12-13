@@ -187,9 +187,9 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Create 'rest' attribute if requested:
     if (addrest)
     {
-        GA_RWAttributeRef    restattr = gdp->addRestAttribute(GEO_POINT_DICT);
+        GA_RWAttributeRef    restattr = gdp->addRestAttribute(GA_ATTRIB_POINT);
         GA_ROPageHandleV3    Phandle(gdp->getP());
-        GA_RWPageHandleV3    Rhandle(gdp, GEO_POINT_DICT, "rest");
+        GA_RWPageHandleV3    Rhandle(gdp, GA_ATTRIB_POINT, "rest");
         UT_Vector3           Pvalue; 
         
         if (Phandle.isValid() && Rhandle.isValid())
