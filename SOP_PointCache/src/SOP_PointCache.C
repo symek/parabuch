@@ -19,6 +19,7 @@
 #include <SYS/SYS_Math.h>
 #include <UT/UT_Spline.h>
 #include <UT/UT_Color.h>
+#include <OP/OP_AutoLockInputs.h>
 #include "SOP_PointCache.h"
 
 #include <stdio.h>
@@ -146,7 +147,6 @@ PC2_File::getPArray(int sample, int steps, float *pr)
 OP_ERROR
 SOP_PointCache::cookMySop(OP_Context &context)
 {
-    GEO_Point *ppt;
     double		 t;
     UT_String filename;
     UT_String interpol_str;
@@ -166,7 +166,8 @@ SOP_PointCache::cookMySop(OP_Context &context)
     OP_Node::flags().timeDep = 1;
     
     /// Before we do anything, we must lock our inputs. 
-    if (lockInputs(context) >= UT_ERROR_ABORT)
+    OP_AutoLockInputs inputs(this);
+    if (inputs.lock(context) >= UT_ERROR_ABORT)
         return error();
    
     /// Duplicate our incoming geometry 
@@ -187,24 +188,9 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Create 'rest' attribute if requested:
     if (addrest)
     {
-        GA_RWAttributeRef    restattr = gdp->addRestAttribute(GA_ATTRIB_POINT);
-        GA_ROPageHandleV3    Phandle(gdp->getP());
-        GA_RWPageHandleV3    Rhandle(gdp, GA_ATTRIB_POINT, "rest");
-        UT_Vector3           Pvalue; 
-        
-        if (Phandle.isValid() && Rhandle.isValid())
-        {
-            GA_Offset start, end;
-            for (GA_Iterator it(gdp->getPointRange()); it.blockAdvance(start, end);)
-            {
-                Phandle.setPage(start);
-                Rhandle.setPage(start);
-                for (GA_Offset pt = start; pt < end; ++pt)
-                {
-                    Rhandle.value(pt) = Phandle.get(pt);
-                }
-            }
-        }  
+        GA_Attribute * rest = gdp->addRestAttribute(GA_ATTRIB_POINT);
+        const GA_Attribute * pos = gdp->getP();
+        rest->replace(*pos);
     }
     
     /// Create pc2 file object only once:
@@ -351,10 +337,11 @@ SOP_PointCache::cookMySop(OP_Context &context)
     {
         int ptnum     = 0;
         int numPoints = pc2->header->numPoints;
-        GA_FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
+        GA_Offset ptoff;
+        GA_FOR_ALL_GROUP_PTOFF(gdp, myGroup, ptoff)
+        // GA_FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
 	    {
-	        UT_Vector3 p;
-	        p = ppt->getPos3();
+	        UT_Vector3 p = gdp->getPos3(ptoff);
 	        if (dointerpolate == PC2_NONE)
 	        {
                 //FIXME: This is complete workaround/proof of concept
@@ -416,7 +403,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
                 p.y() = z;
             }
             
-            ppt->setPos3(p);
+            gdp->setPos3(ptoff, p);
             ptnum++;
             
             /// We really shouldn't go over this boundary...
@@ -430,10 +417,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
         GA_RWAttributeRef ref = gdp->normal();
     
     /// Notify the display cache that we have directly edited
-    gdp->notifyCache(GU_CACHE_ALL);
+     if (!myGroup || !myGroup->isEmpty())
+        gdp->getP()->bumpDataId();
+
     if (spline) 
         delete spline;
-    unlockInputs();
+
+    // unlockInputs();
     return error();
 }
 
