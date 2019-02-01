@@ -107,11 +107,12 @@ private:
     /// This is the group of geometry to be manipulated by this SOP and cooked
     /// by the method "cookInputGroups".
     const GA_PointGroup	*myGroup;
-    float               *points;
-    float               *points_zero;
+    std::unique_ptr<float> points;
+    std::unique_ptr<float> points_zero;
+    std::unique_ptr<UT_Spline> spline;
     int                 dointerpolate;
     bool                reallocate;
-    PC2_File            *pc2;
+    std::unique_ptr<PC2_File> pc2;
 };
 } // End PC2SOP namespace
 

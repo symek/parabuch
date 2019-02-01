@@ -89,7 +89,7 @@ SOP_PointCache::SOP_PointCache(OP_Network *net, const char *name, OP_Operator *o
     reallocate     = false;
 }
 
-SOP_PointCache::~SOP_PointCache() {delete points;}
+SOP_PointCache::~SOP_PointCache() {/*delete points;*/}
 
 OP_ERROR
 SOP_PointCache::cookInputGroups(OP_Context &context, int alone)
@@ -155,7 +155,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     int       addrest;
     int       computeNormals;
     int       relativeOffset;
-    UT_Spline *spline = NULL;
+    // UT_Spline *spline = NULL;
     /// Info buffers
     char      info_buff[200];
     const char *info;
@@ -170,6 +170,13 @@ SOP_PointCache::cookMySop(OP_Context &context)
     if (inputs.lock(context) >= UT_ERROR_ABORT)
         return error();
    
+    FILENAME(filename, t);
+
+    if (filename.length() == 0) {  
+        addWarning(SOP_ERR_FILEGEO, "");
+        return error();
+     }
+
     /// Duplicate our incoming geometry 
     duplicatePointSource(0, context);
     /// Eval parms. 
@@ -180,7 +187,6 @@ SOP_PointCache::cookMySop(OP_Context &context)
     dointerpolate  = INTERPOL(interpol_str, t);
     computeNormals = COMPUTENORMALS(t);
     relativeOffset = RELATIVE(t);
-    FILENAME(filename, t);
 
     /// Get frame. FIXME: This should be probably provided by an user.
     float frame = (float) context.getFloatFrame();
@@ -196,7 +202,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Create pc2 file object only once:
     if (!pc2) 
     {
-        pc2 = new PC2_File(&filename);
+        pc2.reset(new PC2_File(&filename));
         firstRead = 1;
         if (!pc2->loadFile(&filename))
         {  
@@ -245,10 +251,10 @@ SOP_PointCache::cookMySop(OP_Context &context)
     int steps = dointerpolate + 1;
     if (!points || reallocate)
     {
-        if (reallocate)
-            delete points;
-        points     = new float[3*pc2->header->numPoints*steps];
-        reallocate = false;
+        if (reallocate) {
+            points.reset(new float[3*pc2->header->numPoints*steps]);
+            reallocate = false;
+        }
 
         if (!points)
         {
@@ -260,9 +266,9 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Additional array for relative offset pc2s:
     if ((!points_zero && relativeOffset) || reallocate)
     {
-        if (reallocate)
-            delete points_zero;
-        points_zero = new float[3*pc2->header->numPoints];
+        if (reallocate) {
+            points_zero.reset(new float[3*pc2->header->numPoints]);
+        }
 
         if (!points_zero)
         {
@@ -299,7 +305,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	{
 	    sample -= 1; 
 	    sample = SYSclamp(sample, 0.0f, 1.0*pc2->header->numSamples);
-	    spline = new UT_Spline(); 
+	    spline.reset(new UT_Spline()); 
         spline->setGlobalBasis(UT_SPLINE_CATMULL_ROM);
         spline->setSize(3, 3);
         /// Delta needs to be remapped:
@@ -315,7 +321,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
 	    addWarning(SOP_MESSAGE, "No interpolation selected. Supersampling will cause animation longer (frames == samples)");
 	
     /// Load array at 'sample' point 'steps' wide, to 'points[]' array 
-    if (!pc2->getPArray((int) sample, steps, points))
+    if (!pc2->getPArray((int) sample, steps, points.get()))
     {
         addWarning(SOP_MESSAGE, "Can't load points[] from file.");
         return error();
@@ -324,7 +330,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
     //FIXME: This is temporary
     if (relativeOffset)
     {
-        if (!pc2->getPArray((int) 0, 1, points_zero))
+        if (!pc2->getPArray((int) 0, 1, points_zero.get()))
          {
             addWarning(SOP_MESSAGE, "Can't load zero frame position from file.");
             return error();
@@ -341,6 +347,8 @@ SOP_PointCache::cookMySop(OP_Context &context)
         GA_FOR_ALL_GROUP_PTOFF(gdp, myGroup, ptoff)
         // GA_FOR_ALL_OPT_GROUP_POINTS(gdp, myGroup, ppt)
 	    {
+            const float* rawpoints = points.get();
+            const float* rawpoints_zero = points_zero.get();
 	        UT_Vector3 p = gdp->getPos3(ptoff);
 	        if (dointerpolate == PC2_NONE)
 	        {
@@ -348,19 +356,19 @@ SOP_PointCache::cookMySop(OP_Context &context)
                 // I have to rethink whole loop.
                 if (relativeOffset)
                 {
-                    p.x() -= points_zero[3*ptnum];
-                    p.y() -= points_zero[3*ptnum+2];
-                    p.z() -= -points_zero[3*ptnum+1];
+                    p.x() -= rawpoints_zero[3*ptnum];
+                    p.y() -= rawpoints_zero[3*ptnum+2];
+                    p.z() -= -rawpoints_zero[3*ptnum+1];
 
-                    p.x() += points[3*ptnum];
-                    p.y() += points[3*ptnum+2];
-                    p.z() += -points[3*ptnum+1];
+                    p.x() += rawpoints[3*ptnum];
+                    p.y() += rawpoints[3*ptnum+2];
+                    p.z() += -rawpoints[3*ptnum+1];
                 }
                 else
                 {
-                    p.x() = points[3*ptnum];
-                    p.y() = points[3*ptnum+1];
-                    p.z() = points[3*ptnum+2];
+                    p.x() = rawpoints[3*ptnum];
+                    p.y() = rawpoints[3*ptnum+1];
+                    p.z() = rawpoints[3*ptnum+2];
                 }
                 
             }
@@ -368,23 +376,23 @@ SOP_PointCache::cookMySop(OP_Context &context)
             {
                 /// Array is flat and continous:, 
                 /// ax,ay,az,bx,by,bz, then next sample: ax,ay,az,bx...
-                p.x() = SYSlerp(points[3*ptnum  ], points[3*(ptnum + numPoints)],   delta);
-                p.y() = SYSlerp(points[3*ptnum+1], points[3*(ptnum + numPoints)+1], delta);
-                p.z() = SYSlerp(points[3*ptnum+2], points[3*(ptnum + numPoints)+2], delta);
+                p.x() = SYSlerp(rawpoints[3*ptnum  ], rawpoints[3*(ptnum + numPoints)],   delta);
+                p.y() = SYSlerp(rawpoints[3*ptnum+1], rawpoints[3*(ptnum + numPoints)+1], delta);
+                p.z() = SYSlerp(rawpoints[3*ptnum+2], rawpoints[3*(ptnum + numPoints)+2], delta);
             
             }
             else if (dointerpolate == PC2_CUBIC)
             {
                 fpreal32 pp[] = {0.0f, 0.0f, 0.0f};
-                fpreal32 v0[] = {points[3*ptnum], 
-                                 points[3*ptnum+1], 
-                                 points[3*ptnum+2]};
-                fpreal32 v1[] = {points[3*(ptnum + numPoints)], 
-                                 points[3*(ptnum + numPoints)+1], 
-                                 points[3*(ptnum + numPoints)+2]};
-                fpreal32 v2[] = {points[3*(ptnum + numPoints*2)], 
-                                 points[3*(ptnum + numPoints*2)+1], 
-                                 points[3*(ptnum + numPoints*2)+2]};
+                fpreal32 v0[] = {rawpoints[3*ptnum], 
+                                 rawpoints[3*ptnum+1], 
+                                 rawpoints[3*ptnum+2]};
+                fpreal32 v1[] = {rawpoints[3*(ptnum + numPoints)], 
+                                 rawpoints[3*(ptnum + numPoints)+1], 
+                                 rawpoints[3*(ptnum + numPoints)+2]};
+                fpreal32 v2[] = {rawpoints[3*(ptnum + numPoints*2)], 
+                                 rawpoints[3*(ptnum + numPoints*2)+1], 
+                                 rawpoints[3*(ptnum + numPoints*2)+2]};
                 
                 spline->setValue(0, v0, 3); 
                 spline->setValue(1, v1, 3); 
@@ -420,9 +428,7 @@ SOP_PointCache::cookMySop(OP_Context &context)
      if (!myGroup || !myGroup->isEmpty())
         gdp->getP()->bumpDataId();
 
-    if (spline) 
-        delete spline;
-
+  
     // unlockInputs();
     return error();
 }
