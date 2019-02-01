@@ -89,7 +89,7 @@ SOP_PointCache::SOP_PointCache(OP_Network *net, const char *name, OP_Operator *o
     reallocate     = false;
 }
 
-SOP_PointCache::~SOP_PointCache() {/*delete points;*/}
+// SOP_PointCache::~SOP_PointCache() { }
 
 OP_ERROR
 SOP_PointCache::cookInputGroups(OP_Context &context, int alone)
@@ -266,9 +266,9 @@ SOP_PointCache::cookMySop(OP_Context &context)
     /// Additional array for relative offset pc2s:
     if ((!points_zero && relativeOffset) || reallocate)
     {
-        if (reallocate) {
-            points_zero.reset(new float[3*pc2->header->numPoints]);
-        }
+        // if (reallocate) {
+        // }
+        points_zero.reset(new float[3*pc2->header->numPoints]);
 
         if (!points_zero)
         {

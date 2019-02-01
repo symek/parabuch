@@ -41,7 +41,7 @@ public:
             loaded = success; 
          }
     }
-    ~PC2_File();
+    ~PC2_File() = default;
     int loadFile(UT_String *file);
     int loadFile() { return loadFile(filename);}
     int isLoaded() { return loaded;}
@@ -62,7 +62,7 @@ class SOP_PointCache : public SOP_Node
 public:
     // Usual stuff:
 	SOP_PointCache(OP_Network *net, const char *name, OP_Operator *op);
-    virtual ~SOP_PointCache();
+    // virtual ~SOP_PointCache();
     static  PRM_Template myTemplateList[];
     static  OP_Node		 *myConstructor(OP_Network*, const char *, OP_Operator *);
     virtual OP_ERROR     cookInputGroups(OP_Context &context, int alone = 0);
