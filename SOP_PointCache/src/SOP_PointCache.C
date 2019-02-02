@@ -251,10 +251,10 @@ SOP_PointCache::cookMySop(OP_Context &context)
     int steps = dointerpolate + 1;
     if (!points || reallocate)
     {
-        if (reallocate) {
+        // if (reallocate) {
             points.reset(new float[3*pc2->header->numPoints*steps]);
             reallocate = false;
-        }
+        // }
 
         if (!points)
         {
